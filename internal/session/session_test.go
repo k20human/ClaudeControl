@@ -38,7 +38,14 @@ type gridBuffer struct {
 }
 
 func newGrid(w, h int) *gridBuffer {
-	return &gridBuffer{w: w, h: h, cells: make([]uv.Cell, w*h)}
+	b := &gridBuffer{w: w, h: h, cells: make([]uv.Cell, w*h)}
+	// A real screen starts out full of blanks. The zero Cell renders as an
+	// empty string, not a space, so an unfilled buffer silently swallows the
+	// columns a partial Draw never touches.
+	for i := range b.cells {
+		b.cells[i] = uv.EmptyCell
+	}
+	return b
 }
 
 func (b *gridBuffer) Bounds() uv.Rectangle { return uv.Rect(0, 0, b.w, b.h) }
