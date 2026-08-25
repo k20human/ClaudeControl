@@ -1,0 +1,15 @@
+# Three plain shells: the cheapest way to try the multiplexer itself.
+# Run with: ./bin/claudecontrol -config examples/shells.yaml
+layout:
+  split: horizontal
+  ratios: [2, 1]
+  children:
+    - module: term
+      options: { cmd: [bash] }
+    - split: vertical
+      ratios: [1, 1]
+      children:
+        - module: term
+          options: { cmd: [bash] }
+        - module: term
+          options: { cmd: [htop] }
