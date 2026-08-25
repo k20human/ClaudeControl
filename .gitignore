@@ -1,0 +1,7 @@
+# Compiled binaries
+/proto/hologram/holo
+*.test
+*.out
+
+# Tooling scratch
+.playwright-mcp/
