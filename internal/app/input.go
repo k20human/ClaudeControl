@@ -1,0 +1,72 @@
+package app
+
+import (
+	uv "github.com/charmbracelet/ultraviolet"
+
+	"claudecontrol/internal/layout"
+	"claudecontrol/internal/module"
+)
+
+// binding maps a keystroke to an action. Every keystroke listed here was
+// verified absent from the Claude Code 2.1.245 binary; anything not listed is
+// forwarded to the guest untouched.
+//
+// display and desc are what the help panel shows, so the panel is generated
+// from this table rather than written alongside it.
+type binding struct {
+	keys    []string
+	display string
+	desc    string
+	run     func(a *App)
+}
+
+var bindings = []binding{
+	{[]string{"alt+h", "alt+j", "alt+k", "alt+l"}, "alt+h j k l", "move focus", nil},
+	{[]string{"alt+h"}, "", "", func(a *App) { a.focusDirection(Left) }},
+	{[]string{"alt+l"}, "", "", func(a *App) { a.focusDirection(Right) }},
+	{[]string{"alt+k"}, "", "", func(a *App) { a.focusDirection(Up) }},
+	{[]string{"alt+j"}, "", "", func(a *App) { a.focusDirection(Down) }},
+	{[]string{"alt+`"}, "alt+`", "previous pane", func(a *App) { a.setFocus(a.prev) }},
+	{[]string{"alt+n"}, "alt+n", "new session", func(a *App) { _ = a.newPane(layout.Horizontal) }},
+	{[]string{"alt+x"}, "alt+x", "close pane", func(a *App) { _ = a.closePane(a.focus) }},
+	{[]string{"alt+z"}, "alt+z", "zoom / restore", func(a *App) { a.toggleZoom() }},
+	{[]string{"alt+m"}, "alt+m", "flip the split: side by side <-> stacked", func(a *App) { a.rotateFocusedSplit() }},
+	{[]string{"alt+s"}, "alt+s", "reset every split to equal shares", func(a *App) { a.evenOutSplits() }},
+	{[]string{"alt+g"}, "alt+g", "this panel", func(a *App) { a.overlay = overlayHelp }},
+	{[]string{"alt+q"}, "alt+q", "quit", func(a *App) { a.overlay = overlayQuit }},
+}
+
+func (a *App) handleKey(e uv.KeyPressEvent) {
+	// A panel swallows the keystroke that closes it, so dismissing help can
+	// never drop a stray character into the session underneath.
+	if a.overlay != overlayNone {
+		a.dismissOverlay(e.MatchString("y", "enter"))
+		return
+	}
+	for _, b := range bindings {
+		if b.run != nil && e.MatchString(b.keys...) {
+			b.run(a)
+			return
+		}
+	}
+	if m, ok := a.modules[a.focus].(module.Inputter); ok {
+		m.Key(e)
+	}
+}
+
+// focusDirection moves focus to the neighbouring pane, if there is one.
+func (a *App) focusDirection(d Direction) {
+	a.setFocus(nearest(a.rects, a.focus, d))
+}
+
+// setFocus changes focus, remembering the previous pane for alt+`.
+func (a *App) setFocus(id layout.PaneID) {
+	if id == a.focus {
+		return
+	}
+	if _, ok := a.rects[id]; !ok {
+		return
+	}
+	a.prev = a.focus
+	a.focus = id
+}

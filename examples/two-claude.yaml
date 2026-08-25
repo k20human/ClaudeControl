@@ -1,0 +1,14 @@
+# Two Claude Code sessions side by side, 60/40.
+# Run with: ./bin/claudecontrol -config examples/two-claude.yaml
+layout:
+  split: horizontal
+  ratios: [3, 2]
+  children:
+    - module: term
+      options:
+        cmd: [claude]
+        dir: ~/GolandProjects/ClaudeControl
+    - module: term
+      options:
+        cmd: [claude]
+        dir: ~/DEV
