@@ -1,6 +1,7 @@
 package app_test
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -174,4 +175,42 @@ func TestFocusRoutesTypingToTheFocusedPane(t *testing.T) {
 	sendKey("\x1bh") // alt+h
 	sendKey("C")
 	waitForRow(t, snap, 0, "L>AC")
+}
+
+// click sends an SGR mouse press and release at a zero-based cell. SGR
+// coordinates are one-based, hence the offsets.
+func click(t *testing.T, s *session.Session, x, y int) {
+	t.Helper()
+	s.SendText(fmt.Sprintf("\x1b[<0;%d;%dM", x+1, y+1))
+	s.SendText(fmt.Sprintf("\x1b[<0;%d;%dm", x+1, y+1))
+	time.Sleep(150 * time.Millisecond)
+}
+
+// Clicking an unfocused pane must move focus there and swallow the click, so
+// that changing panes can never trigger an action inside the pane you land on.
+func TestClickFocusesAPaneWithoutReachingItsGuest(t *testing.T) {
+	const W, H = 60, 12
+	s, snap := run(t, "testdata/two-echo.yaml", W, H)
+
+	waitForRow(t, snap, 0, "L>")
+	waitForRow(t, snap, 0, "R>")
+
+	// Click well inside the right pane, which starts at column 30.
+	click(t, s, 45, 5)
+	s.SendText("B")
+	time.Sleep(150 * time.Millisecond)
+	waitForRow(t, snap, 0, "R>B")
+
+	// The guests echo everything they receive. Had the click been forwarded,
+	// its escape sequence would have left a trace in the pane.
+	row := snap().row(0)
+	if strings.Contains(row, "[<0") || strings.Contains(row, "0;46;6") {
+		t.Errorf("row 0 = %q, the click reached the guest", row)
+	}
+
+	// And back to the left pane.
+	click(t, s, 5, 5)
+	s.SendText("C")
+	time.Sleep(150 * time.Millisecond)
+	waitForRow(t, snap, 0, "L>C")
 }

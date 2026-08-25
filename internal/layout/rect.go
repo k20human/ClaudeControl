@@ -16,6 +16,11 @@ type DividerRect struct {
 	Rect   Rect
 	Parent *Node
 	Index  int // divider i sits between Children[i] and Children[i+1]
+
+	// Area is the rectangle the parent split divides. A drag needs it to turn
+	// a movement in cells back into ratio units; without it the conversion is
+	// only correct for a split at the root.
+	Area Rect
 }
 
 // Distribute splits total into len(ratios) parts proportional to ratios.
@@ -124,7 +129,7 @@ func collectDividers(n *Node, area Rect, out *[]DividerRect) {
 			} else {
 				strip = Rect{X: a.X, Y: a.Y + a.H, W: a.W, H: 1}
 			}
-			*out = append(*out, DividerRect{Rect: strip, Parent: n, Index: i})
+			*out = append(*out, DividerRect{Rect: strip, Parent: n, Index: i, Area: area})
 		}
 		for i, r := range areas {
 			collectDividers(n.Children[i], r, out)
