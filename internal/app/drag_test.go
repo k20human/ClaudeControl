@@ -28,6 +28,7 @@ func dragApp(t *testing.T, w, h int) *App {
 		focus:    1,
 		prev:     1,
 		nextPane: 2,
+		hoverDiv: -1,
 		wake:     make(chan struct{}, 1),
 	}
 	a.relayout()
@@ -52,8 +53,8 @@ func TestDragMovesTheDividerCellForCell(t *testing.T) {
 	if got := a.rects[1].W; got != before+5 {
 		t.Fatalf("left pane = %d columns after a 5-cell drag, want %d", got, before+5)
 	}
-	if got := a.rects[2].W; got != 60-1-(before+5) {
-		t.Fatalf("right pane = %d columns, want %d", got, 60-1-(before+5))
+	if got := a.rects[2].W; got != 60-layout.DividerW-(before+5) {
+		t.Fatalf("right pane = %d columns, want %d", got, 60-layout.DividerW-(before+5))
 	}
 
 	a.handleMouse(uv.MouseReleaseEvent{X: divX + 5, Y: 5}, uv.Mouse{X: divX + 5, Y: 5})

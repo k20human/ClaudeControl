@@ -41,18 +41,21 @@ func TestComputeSingleLeafFillsTheArea(t *testing.T) {
 	}
 }
 
-// A horizontal split of two panes spends one column on the divider.
-func TestComputeHorizontalSplitReservesADividerColumn(t *testing.T) {
+// A horizontal split spends DividerW columns on each divider. Two columns
+// rather than one: a terminal cell is about twice as tall as it is wide, so a
+// two-column vertical bar reads as thick as a one-row horizontal one — and it
+// doubles the target a pointer has to hit in order to drag it.
+func TestComputeHorizontalSplitReservesTheDividerColumns(t *testing.T) {
 	root := &Node{
 		Kind:        KindSplit,
 		Orientation: Horizontal,
 		Ratios:      []int{1, 1},
 		Children:    []*Node{leaf(1), leaf(2)},
 	}
-	got := Compute(root, Rect{X: 0, Y: 0, W: 21, H: 10})
+	got := Compute(root, Rect{X: 0, Y: 0, W: 22, H: 10})
 	want := map[PaneID]Rect{
 		1: {X: 0, Y: 0, W: 10, H: 10},
-		2: {X: 11, Y: 0, W: 10, H: 10},
+		2: {X: 12, Y: 0, W: 10, H: 10},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Compute = %v, want %v", got, want)
@@ -97,13 +100,13 @@ func TestDividersReportsOnePositionPerGap(t *testing.T) {
 		Ratios:      []int{1, 1, 1},
 		Children:    []*Node{leaf(1), leaf(2), leaf(3)},
 	}
-	got := Dividers(root, Rect{X: 0, Y: 0, W: 32, H: 10})
+	got := Dividers(root, Rect{X: 0, Y: 0, W: 34, H: 10})
 	if len(got) != 2 {
 		t.Fatalf("Dividers = %d entries, want 2", len(got))
 	}
 	for i, d := range got {
-		if d.Rect.W != 1 || d.Rect.H != 10 {
-			t.Errorf("divider %d = %+v, want a 1x10 column", i, d.Rect)
+		if d.Rect.W != DividerW || d.Rect.H != 10 {
+			t.Errorf("divider %d = %+v, want a %dx10 column", i, d.Rect, DividerW)
 		}
 		if d.Index != i {
 			t.Errorf("divider %d has Index %d", i, d.Index)

@@ -70,11 +70,27 @@ func (a *App) handleMouse(ev uv.MouseEvent, m uv.Mouse) {
 		return
 	}
 
-	if _, isClick := ev.(uv.MouseClickEvent); isClick {
-		if i := dividerAt(a.divs, m.X, m.Y); i >= 0 {
-			a.beginDrag(i, m)
-			return
+	// A panel takes the whole screen until it is dismissed.
+	if a.overlay != overlayNone {
+		if _, isClick := ev.(uv.MouseClickEvent); isClick {
+			a.dismissOverlay(false)
 		}
+		return
+	}
+
+	a.hoverDiv = dividerAt(a.divs, m.X, m.Y)
+	a.hoverBtn = buttonAt(a.buttons, m.X, m.Y)
+
+	if i := a.hoverBtn; i >= 0 {
+		if _, isClick := ev.(uv.MouseClickEvent); isClick {
+			a.buttons[i].run(a)
+		}
+		return
+	}
+
+	if _, isClick := ev.(uv.MouseClickEvent); isClick && a.hoverDiv >= 0 {
+		a.beginDrag(a.hoverDiv, m)
+		return
 	}
 
 	id := paneAt(a.rects, m.X, m.Y)
@@ -99,13 +115,13 @@ func (a *App) handleMouse(ev uv.MouseEvent, m uv.Mouse) {
 // beginDrag freezes the sizes a drag will work from.
 func (a *App) beginDrag(i int, m uv.Mouse) {
 	d := a.divs[i]
-	horiz := d.Rect.W == 1
-	origin, span, min := m.Y, d.Area.H, layout.MinPaneH
+	horiz := d.Parent.Orientation == layout.Horizontal
+	origin, span, min, thick := m.Y, d.Area.H, layout.MinPaneH, layout.DividerH
 	if horiz {
-		origin, span, min = m.X, d.Area.W, layout.MinPaneW
+		origin, span, min, thick = m.X, d.Area.W, layout.MinPaneW, layout.DividerW
 	}
-	// The split distributes everything except the one-cell divider strips.
-	span -= len(d.Parent.Children) - 1
+	// The split distributes everything except the divider strips.
+	span -= (len(d.Parent.Children) - 1) * thick
 	if span < 2*min {
 		return
 	}

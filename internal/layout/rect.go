@@ -7,6 +7,14 @@ const (
 	MinPaneH = 3
 )
 
+// Divider thickness, in cells. A terminal cell is roughly twice as tall as it
+// is wide, so two columns and one row look equally thick — and the wider
+// vertical bar is markedly easier to grab with a pointer.
+const (
+	DividerW = 2
+	DividerH = 1
+)
+
 // Rect is a screen rectangle in cells. X and Y are zero-based.
 type Rect struct{ X, Y, W, H int }
 
@@ -83,22 +91,21 @@ func splitAreas(n *Node, area Rect) []Rect {
 	if count == 0 {
 		return nil
 	}
-	gaps := count - 1
 	out := make([]Rect, count)
 	if n.Orientation == Horizontal {
-		parts := Distribute(area.W-gaps, n.Ratios)
+		parts := Distribute(area.W-(count-1)*DividerW, n.Ratios)
 		x := area.X
 		for i, w := range parts {
 			out[i] = Rect{X: x, Y: area.Y, W: w, H: area.H}
-			x += w + 1
+			x += w + DividerW
 		}
 		return out
 	}
-	parts := Distribute(area.H-gaps, n.Ratios)
+	parts := Distribute(area.H-(count-1)*DividerH, n.Ratios)
 	y := area.Y
 	for i, h := range parts {
 		out[i] = Rect{X: area.X, Y: y, W: area.W, H: h}
-		y += h + 1
+		y += h + DividerH
 	}
 	return out
 }
@@ -125,9 +132,9 @@ func collectDividers(n *Node, area Rect, out *[]DividerRect) {
 			a := areas[i]
 			var strip Rect
 			if n.Orientation == Horizontal {
-				strip = Rect{X: a.X + a.W, Y: a.Y, W: 1, H: a.H}
+				strip = Rect{X: a.X + a.W, Y: a.Y, W: DividerW, H: a.H}
 			} else {
-				strip = Rect{X: a.X, Y: a.Y + a.H, W: a.W, H: 1}
+				strip = Rect{X: a.X, Y: a.Y + a.H, W: a.W, H: DividerH}
 			}
 			*out = append(*out, DividerRect{Rect: strip, Parent: n, Index: i, Area: area})
 		}

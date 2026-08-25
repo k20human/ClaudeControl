@@ -96,6 +96,34 @@ func run(t *testing.T, cfg string, w, h int) (*session.Session, func() *screen) 
 	}
 }
 
+// waitForAnywhere polls until the text appears on any row. Panels are centred,
+// so their position depends on the window size and on how many rows fit.
+func waitForAnywhere(t *testing.T, snap func() *screen, want string) *screen {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		g := snap()
+		for y := 0; y < g.h; y++ {
+			if strings.Contains(g.row(y), want) {
+				return g
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("%q never appeared on screen", want)
+	return nil
+}
+
+// anywhere reports whether the text is on screen right now.
+func anywhere(g *screen, want string) bool {
+	for y := 0; y < g.h; y++ {
+		if strings.Contains(g.row(y), want) {
+			return true
+		}
+	}
+	return false
+}
+
 func waitForRow(t *testing.T, snap func() *screen, y int, want string) *screen {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
@@ -125,14 +153,10 @@ func TestTwoPanesRenderSideBySideAndPersist(t *testing.T) {
 	if !strings.HasPrefix(row, "LEFTPANE") {
 		t.Errorf("row 0 = %q, want it to start with LEFTPANE", row)
 	}
-	if !strings.Contains(row, "│") {
-		t.Errorf("row 0 = %q, want a divider glyph", row)
-	}
 	left := strings.Index(row, "LEFTPANE")
-	div := strings.Index(row, "│")
 	right := strings.Index(row, "RIGHTPANE")
-	if !(left < div && div < right) {
-		t.Errorf("row 0 = %q, want LEFTPANE then divider then RIGHTPANE", row)
+	if left < 0 || right < 0 || left >= right {
+		t.Errorf("row 0 = %q, want LEFTPANE to the left of RIGHTPANE", row)
 	}
 
 	// Neither guest writes again. A pane that is painted must stay painted.
@@ -219,4 +243,77 @@ func TestClickFocusesAPaneWithoutReachingItsGuest(t *testing.T) {
 	s.SendText("C")
 	time.Sleep(150 * time.Millisecond)
 	waitForRow(t, snap, 0, "L>C")
+}
+
+// The status bar is the mouse-only path to everything the keyboard can do, so
+// its labels are part of the contract.
+func TestStatusBarOffersTheExpectedButtons(t *testing.T) {
+	const W, H = 76, 14
+	_, snap := run(t, "testdata/two-echo.yaml", W, H)
+	waitForRow(t, snap, 0, "L>")
+
+	bar := waitForRow(t, snap, H-1, "quit").row(H - 1)
+	for _, label := range []string{"new", "close", "zoom", "rotate", "even", "help", "quit"} {
+		if !strings.Contains(bar, label) {
+			t.Errorf("status bar = %q, missing %q", bar, label)
+		}
+	}
+	if !strings.Contains(bar, "2 panes") {
+		t.Errorf("status bar = %q, want the pane count", bar)
+	}
+}
+
+// Clicking help must open the panel, and the key that closes it must not reach
+// the session underneath.
+func TestHelpPanelOpensOnClickAndSwallowsTheKeyThatClosesIt(t *testing.T) {
+	const W, H = 76, 20
+	s, snap := run(t, "testdata/two-echo.yaml", W, H)
+	waitForRow(t, snap, 0, "L>")
+	waitForRow(t, snap, 0, "R>")
+
+	bar := waitForRow(t, snap, H-1, "help").row(H - 1)
+	click(t, s, strings.Index(bar, "help"), H-1)
+	waitForAnywhere(t, snap, "SHORTCUTS")
+
+	s.SendText("Z")
+	time.Sleep(300 * time.Millisecond)
+	if anywhere(snap(), "SHORTCUTS") {
+		t.Fatal("the panel is still open")
+	}
+	if row := snap().row(0); strings.Contains(row, "L>Z") || strings.Contains(row, "R>Z") {
+		t.Errorf("row 0 = %q, the dismissing key leaked into a session", row)
+	}
+}
+
+// Quitting from the bar asks first: a stray click would otherwise end every
+// session, and sessions do not survive the application.
+func TestQuitButtonAsksBeforeEndingEverything(t *testing.T) {
+	const W, H = 76, 20
+	s, snap := run(t, "testdata/two-echo.yaml", W, H)
+	waitForRow(t, snap, 0, "L>")
+
+	bar := waitForRow(t, snap, H-1, "quit").row(H - 1)
+	click(t, s, strings.Index(bar, "quit"), H-1)
+	waitForAnywhere(t, snap, "QUIT")
+
+	// Anything but yes keeps the application alive.
+	s.SendText("n")
+	time.Sleep(300 * time.Millisecond)
+	if st, _ := s.Status(); st == session.Exited {
+		t.Fatal("answering no quit the application anyway")
+	}
+	waitForRow(t, snap, 0, "L>")
+
+	click(t, s, strings.Index(bar, "quit"), H-1)
+	waitForAnywhere(t, snap, "QUIT")
+	s.SendText("y")
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if st, _ := s.Status(); st == session.Exited {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("answering yes did not quit")
 }

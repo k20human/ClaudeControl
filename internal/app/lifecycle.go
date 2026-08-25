@@ -116,3 +116,39 @@ func (a *App) exitedCode(id layout.PaneID) (int, bool) {
 	st, code := m.Session().Status()
 	return code, st == session.Exited
 }
+
+// rotateFocusedSplit flips the split that holds the focused pane between side
+// by side and stacked.
+func (a *App) rotateFocusedSplit() {
+	_, parent, _ := layout.Find(a.root, a.focus)
+	if parent == nil || parent.Kind != layout.KindSplit {
+		return
+	}
+	if parent.Orientation == layout.Horizontal {
+		parent.Orientation = layout.Vertical
+	} else {
+		parent.Orientation = layout.Horizontal
+	}
+	a.relayout()
+}
+
+// evenOutSplits gives every child of every split the same share. It is the
+// cheap way back from a layout that has been dragged into a corner.
+func (a *App) evenOutSplits() {
+	var walk func(n *layout.Node)
+	walk = func(n *layout.Node) {
+		if n == nil {
+			return
+		}
+		if n.Kind == layout.KindSplit {
+			for i := range n.Ratios {
+				n.Ratios[i] = 1
+			}
+		}
+		for _, c := range n.Children {
+			walk(c)
+		}
+	}
+	walk(a.root)
+	a.relayout()
+}

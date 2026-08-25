@@ -9,40 +9,49 @@ import (
 )
 
 var (
-	dividerFg = color.RGBA{R: 0x3a, G: 0x44, B: 0x55, A: 0xff}
-	focusFg   = color.RGBA{R: 0x4d, G: 0xd0, B: 0xe1, A: 0xff}
+	dividerBg = color.RGBA{R: 0x24, G: 0x2b, B: 0x38, A: 0xff}
+	focusBg   = color.RGBA{R: 0x35, G: 0x45, B: 0x5c, A: 0xff}
+	hoverBg   = color.RGBA{R: 0x4d, G: 0xd0, B: 0xe1, A: 0xff}
 )
 
-// drawChrome paints the divider strips, highlighting those that touch the
-// focused pane so the focus is readable without a border around every pane.
-func drawChrome(scr uv.Screen, rects map[layout.PaneID]layout.Rect, divs []layout.DividerRect, focus layout.PaneID) {
+// drawDividers paints the strips between panes.
+//
+// They are filled bars rather than line glyphs: a bar reads as something you
+// can take hold of, and it makes the hover state a plain change of colour
+// instead of a change of character.
+func drawDividers(scr uv.Screen, rects map[layout.PaneID]layout.Rect, divs []layout.DividerRect, focus layout.PaneID, hovered int) {
 	fr, hasFocus := rects[focus]
-	for _, d := range divs {
-		fg := color.Color(dividerFg)
-		if hasFocus && touches(d.Rect, fr) {
-			fg = focusFg
+	for i, d := range divs {
+		bg := color.Color(dividerBg)
+		switch {
+		case i == hovered:
+			bg = hoverBg
+		case hasFocus && touches(d.Rect, fr):
+			bg = focusBg
 		}
-		glyph := "│"
-		if d.Rect.W > 1 {
-			glyph = "─"
-		}
-		for y := d.Rect.Y; y < d.Rect.Y+d.Rect.H; y++ {
-			for x := d.Rect.X; x < d.Rect.X+d.Rect.W; x++ {
-				cell := uv.EmptyCell
-				cell.Content = glyph
-				cell.Style.Fg = fg
-				scr.SetCell(x, y, &cell)
-			}
+		fill(scr, d.Rect, bg)
+	}
+}
+
+// fill paints a rectangle with a background colour.
+func fill(scr uv.Screen, r layout.Rect, bg color.Color) {
+	for y := r.Y; y < r.Y+r.H; y++ {
+		for x := r.X; x < r.X+r.W; x++ {
+			cell := uv.EmptyCell
+			cell.Content = " "
+			cell.Style.Bg = bg
+			scr.SetCell(x, y, &cell)
 		}
 	}
 }
 
 // touches reports whether a divider strip sits directly against a pane.
 func touches(d, pane layout.Rect) bool {
-	if d.W == 1 {
-		return (d.X == pane.X+pane.W || d.X+1 == pane.X) &&
+	horizontal := d.H > d.W || (d.W == d.H && d.H > 1)
+	if horizontal {
+		return (d.X == pane.X+pane.W || d.X+d.W == pane.X) &&
 			d.Y < pane.Y+pane.H && pane.Y < d.Y+d.H
 	}
-	return (d.Y == pane.Y+pane.H || d.Y+1 == pane.Y) &&
+	return (d.Y == pane.Y+pane.H || d.Y+d.H == pane.Y) &&
 		d.X < pane.X+pane.W && pane.X < d.X+d.W
 }

@@ -29,6 +29,7 @@ func newTestApp() *App {
 		focus:    1,
 		prev:     1,
 		nextPane: 1,
+		hoverDiv: -1,
 		wake:     make(chan struct{}, 1),
 	}
 }
@@ -73,21 +74,21 @@ func TestToggleZoomIsReversible(t *testing.T) {
 	a.root, _ = layout.Split(a.root, 1, &layout.Node{Kind: layout.KindLeaf, PaneID: 2}, layout.Horizontal)
 	a.modules[2] = &stub{}
 	a.nextPane = 2
-	before := layout.Compute(a.root, a.area)
+	before := layout.Compute(a.root, a.paneArea())
 
 	a.toggleZoom()
 	if a.zoomed != 1 {
 		t.Fatalf("zoomed = %d, want 1", a.zoomed)
 	}
-	if got := a.rects[1]; got != a.area {
-		t.Fatalf("zoomed pane rect = %+v, want the whole area %+v", got, a.area)
+	if got := a.rects[1]; got != a.paneArea() {
+		t.Fatalf("zoomed pane rect = %+v, want the pane area %+v", got, a.paneArea())
 	}
 
 	a.toggleZoom()
 	if a.zoomed != 0 {
 		t.Fatalf("zoomed = %d after the second toggle, want 0", a.zoomed)
 	}
-	after := layout.Compute(a.root, a.area)
+	after := layout.Compute(a.root, a.paneArea())
 	if before[1] != after[1] || before[2] != after[2] {
 		t.Fatalf("layout changed across a zoom cycle: %v then %v", before, after)
 	}

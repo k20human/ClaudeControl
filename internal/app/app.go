@@ -38,6 +38,16 @@ type App struct {
 	// the layout changed: see draw for why every frame must not do it.
 	clearNext bool
 
+	// hoverDiv and hoverBtn are what the pointer is over, or -1. They exist so
+	// a divider can light up under the pointer: a terminal application cannot
+	// change the mouse cursor itself, so the affordance has to live on the
+	// thing being pointed at.
+	hoverDiv int
+	hoverBtn int
+
+	overlay overlayKind
+	buttons []button
+
 	nextPane layout.PaneID
 	drag     *dragState
 
@@ -61,6 +71,8 @@ func New(cfgPath string) (*App, error) {
 		modules:  make(map[layout.PaneID]module.Module),
 		sessions: session.NewRegistry(),
 		rects:    make(map[layout.PaneID]layout.Rect),
+		hoverDiv: -1,
+		hoverBtn: -1,
 		wake:     make(chan struct{}, 1),
 	}
 
@@ -103,9 +115,10 @@ func (a *App) Run() error {
 
 	a.scr.EnterAltScreen()
 	a.scr.HideCursor()
-	// Drag tracking, not motion tracking: one event per hovered cell would
-	// force a repaint for no benefit at this stage.
-	a.scr.SetMouseMode(uv.MouseModeDrag)
+	// Full motion tracking. It costs one event per hovered cell, which is the
+	// price of highlighting a divider before the pointer is pressed; repaints
+	// are coalesced and only a couple of cells ever change.
+	a.scr.SetMouseMode(uv.MouseModeMotion)
 	a.scr.SetMouseEncoding(uv.MouseEncodingSGR)
 	a.scr.EnableBracketedPaste()
 
@@ -164,15 +177,29 @@ func (a *App) resize(w, h int) {
 	a.relayout()
 }
 
+// paneArea is the screen minus the status bar row.
+func (a *App) paneArea() layout.Rect {
+	r := a.area
+	if r.H > 1 {
+		r.H--
+	}
+	return r
+}
+
 // relayout recomputes rectangles from the current tree and zoom state.
 func (a *App) relayout() {
 	old := a.rects
+	panes := a.paneArea()
 	if a.zoomed != 0 {
-		a.rects = map[layout.PaneID]layout.Rect{a.zoomed: a.area}
+		a.rects = map[layout.PaneID]layout.Rect{a.zoomed: panes}
 		a.divs = nil
 	} else {
-		a.rects = layout.Compute(a.root, a.area)
-		a.divs = layout.Dividers(a.root, a.area)
+		a.rects = layout.Compute(a.root, panes)
+		a.divs = layout.Dividers(a.root, panes)
+	}
+	a.buttons = a.buildStatusBar()
+	if a.hoverDiv >= len(a.divs) {
+		a.hoverDiv = -1
 	}
 	a.clearNext = true
 	for id, r := range a.rects {
@@ -219,9 +246,14 @@ func (a *App) draw() {
 			exitedBanner(a.scr, area, code)
 		}
 	}
-	drawChrome(a.scr, a.rects, a.divs, a.focus)
+	drawDividers(a.scr, a.rects, a.divs, a.focus, a.hoverDiv)
+	a.drawStatusBar(a.scr)
+	a.drawOverlay(a.scr)
 
 	a.scr.HideCursor()
+	if a.overlay != overlayNone {
+		return
+	}
 	if m, ok := a.modules[a.focus]; ok {
 		if c, ok := m.(module.Cursorer); ok {
 			if x, y, visible := c.Cursor(); visible {

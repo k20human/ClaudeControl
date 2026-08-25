@@ -10,26 +10,41 @@ import (
 // binding maps a keystroke to an action. Every keystroke listed here was
 // verified absent from the Claude Code 2.1.245 binary; anything not listed is
 // forwarded to the guest untouched.
+//
+// display and desc are what the help panel shows, so the panel is generated
+// from this table rather than written alongside it.
 type binding struct {
-	keys []string
-	run  func(a *App)
+	keys    []string
+	display string
+	desc    string
+	run     func(a *App)
 }
 
 var bindings = []binding{
-	{[]string{"alt+h"}, func(a *App) { a.focusDirection(Left) }},
-	{[]string{"alt+l"}, func(a *App) { a.focusDirection(Right) }},
-	{[]string{"alt+k"}, func(a *App) { a.focusDirection(Up) }},
-	{[]string{"alt+j"}, func(a *App) { a.focusDirection(Down) }},
-	{[]string{"alt+`"}, func(a *App) { a.setFocus(a.prev) }},
-	{[]string{"alt+n"}, func(a *App) { _ = a.newPane(layout.Horizontal) }},
-	{[]string{"alt+x"}, func(a *App) { _ = a.closePane(a.focus) }},
-	{[]string{"alt+z"}, func(a *App) { a.toggleZoom() }},
-	{[]string{"alt+q"}, func(a *App) { a.quit = true }},
+	{[]string{"alt+h", "alt+j", "alt+k", "alt+l"}, "alt+h j k l", "move focus", nil},
+	{[]string{"alt+h"}, "", "", func(a *App) { a.focusDirection(Left) }},
+	{[]string{"alt+l"}, "", "", func(a *App) { a.focusDirection(Right) }},
+	{[]string{"alt+k"}, "", "", func(a *App) { a.focusDirection(Up) }},
+	{[]string{"alt+j"}, "", "", func(a *App) { a.focusDirection(Down) }},
+	{[]string{"alt+`"}, "alt+`", "previous pane", func(a *App) { a.setFocus(a.prev) }},
+	{[]string{"alt+n"}, "alt+n", "new session", func(a *App) { _ = a.newPane(layout.Horizontal) }},
+	{[]string{"alt+x"}, "alt+x", "close pane", func(a *App) { _ = a.closePane(a.focus) }},
+	{[]string{"alt+z"}, "alt+z", "zoom / restore", func(a *App) { a.toggleZoom() }},
+	{[]string{"alt+m"}, "alt+m", "rotate the split", func(a *App) { a.rotateFocusedSplit() }},
+	{[]string{"alt+s"}, "alt+s", "even out the split", func(a *App) { a.evenOutSplits() }},
+	{[]string{"alt+g"}, "alt+g", "shortcuts", func(a *App) { a.overlay = overlayHelp }},
+	{[]string{"alt+q"}, "alt+q", "quit", func(a *App) { a.overlay = overlayQuit }},
 }
 
 func (a *App) handleKey(e uv.KeyPressEvent) {
+	// A panel swallows the keystroke that closes it, so dismissing help can
+	// never drop a stray character into the session underneath.
+	if a.overlay != overlayNone {
+		a.dismissOverlay(e.MatchString("y", "enter"))
+		return
+	}
 	for _, b := range bindings {
-		if e.MatchString(b.keys...) {
+		if b.run != nil && e.MatchString(b.keys...) {
 			b.run(a)
 			return
 		}
