@@ -118,6 +118,10 @@ func (s *Session) pumpOutput() {
 	buf := make([]byte, 32*1024)
 	for {
 		n, err := s.ptmx.Read(buf)
+		if f, e := os.OpenFile("/tmp/cc-sess.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); e == nil {
+			fmt.Fprintf(f, "%s read n=%d err=%v data=%q\n", s.ID, n, err, string(buf[:max(0, n)]))
+			f.Close()
+		}
 		if n > 0 {
 			_, _ = s.Term.Write(buf[:n])
 			if s.onUpdate != nil {

@@ -1,0 +1,8 @@
+layout:
+  split: horizontal
+  ratios: [1, 1]
+  children:
+    - module: term
+      options: { cmd: [sh, -c, "printf 'L>'; cat"] }
+    - module: term
+      options: { cmd: [sh, -c, "printf 'R>'; cat"] }

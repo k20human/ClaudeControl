@@ -141,3 +141,37 @@ func TestTwoPanesRenderSideBySideAndPersist(t *testing.T) {
 		t.Errorf("row 0 changed with no guest output:\n before %q\n after  %q", row, again)
 	}
 }
+
+// Focus decides where typing lands. Each guest echoes what it receives, so the
+// pane a character appears in is the pane that had focus.
+func TestFocusRoutesTypingToTheFocusedPane(t *testing.T) {
+	const W, H = 60, 12
+	s, snap := run(t, "testdata/two-echo.yaml", W, H)
+
+	waitForRow(t, snap, 0, "L>")
+	waitForRow(t, snap, 0, "R>")
+
+	// Focus starts on the first pane of the layout.
+	s.SendText("A")
+	time.Sleep(150 * time.Millisecond)
+	waitForRow(t, snap, 0, "L>A")
+
+	// Alt+key reaches the terminal as ESC followed by the letter, and the
+	// input decoder needs its escape timeout to elapse before it can tell that
+	// pair from a bare Escape. Sending the next character too soon lets the
+	// two runs of bytes coalesce, so the pause is part of the protocol, not
+	// impatience.
+	sendKey := func(keys string) {
+		t.Helper()
+		s.SendText(keys)
+		time.Sleep(150 * time.Millisecond)
+	}
+
+	sendKey("\x1bl") // alt+l
+	sendKey("B")
+	waitForRow(t, snap, 0, "R>B")
+
+	sendKey("\x1bh") // alt+h
+	sendKey("C")
+	waitForRow(t, snap, 0, "L>AC")
+}

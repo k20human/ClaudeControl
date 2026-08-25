@@ -118,11 +118,31 @@ func (m *Module) Cursor() (x, y int, visible bool) {
 	return p.X, p.Y, true
 }
 
-// Key forwards a key press, re-encoded for the guest.
+// Key forwards a key press to the guest.
+//
+// Printable characters are sent as text rather than through the emulator's key
+// encoder. That encoder compares whole key structs and ends with
+//
+//	default:
+//		if key.Mod == 0 { seq += string(key.Code) }
+//
+// so it emits nothing at all for a shifted key — and ultraviolet reports "A" as
+// {Text:"A", Mod:ModShift, Code:'a'}. Routed through it, every capital letter
+// and every shifted symbol would vanish silently.
+//
+// Keys with no text — arrows, function keys, Ctrl combinations, Alt
+// combinations — still go through the encoder, which is where it earns its
+// keep: it answers with the sequence this guest asked for, honouring the
+// application-cursor and application-keypad modes it negotiated.
 func (m *Module) Key(k uv.KeyEvent) {
-	if m.sess != nil {
-		m.sess.SendKey(k)
+	if m.sess == nil {
+		return
 	}
+	if key := k.Key(); key.Text != "" {
+		m.sess.SendText(key.Text)
+		return
+	}
+	m.sess.SendKey(k)
 }
 
 // Mouse forwards a pane-local mouse event, re-encoded for the guest.

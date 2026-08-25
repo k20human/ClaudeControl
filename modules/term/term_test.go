@@ -102,3 +102,55 @@ func TestUnknownModuleNameIsAnError(t *testing.T) {
 		t.Fatal("module.New(nope) = nil error, want an error")
 	}
 }
+
+// A shifted character must reach the guest. The emulator's key encoder drops
+// any key whose modifier is non-zero and does not match one of its hard-coded
+// combinations, so routing printable text through it silently swallows every
+// capital letter. This pins the workaround down.
+func TestShiftedCharacterReachesTheGuest(t *testing.T) {
+	reg := session.NewRegistry()
+	m, err := module.New("term", map[string]any{
+		"cmd": []any{"sh", "-c", "printf '>'; cat"},
+		"dir": t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("module.New: %v", err)
+	}
+	if err := m.Init(module.Context{PaneID: 1, Sessions: reg, Wake: func() {}}); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	defer m.Close()
+	if err := m.Resize(20, 3); err != nil {
+		t.Fatalf("Resize: %v", err)
+	}
+
+	in, ok := m.(module.Inputter)
+	if !ok {
+		t.Fatal("the term module does not accept input")
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		buf := newBuffer(20, 3)
+		m.Draw(buf, uv.Rect(0, 0, 20, 3))
+		if strings.HasPrefix(buf.row(0), ">") {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	// Exactly what ultraviolet reports when the user presses shift+a.
+	in.Key(uv.KeyPressEvent{Text: "A", Mod: uv.ModShift, Code: 'a', ShiftedCode: 'A'})
+
+	var got string
+	for time.Now().Before(deadline) {
+		buf := newBuffer(20, 3)
+		m.Draw(buf, uv.Rect(0, 0, 20, 3))
+		got = buf.row(0)
+		if strings.Contains(got, ">A") {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("row 0 = %q, want the capital A to have reached the guest", got)
+}
