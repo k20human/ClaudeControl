@@ -7,6 +7,7 @@ require (
 	github.com/charmbracelet/x/ansi v0.11.8
 	github.com/charmbracelet/x/vt v0.0.0-20260823001701-96af6d2cb5f6
 	github.com/creack/pty v1.1.24
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
