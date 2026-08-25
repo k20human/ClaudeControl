@@ -5,3 +5,4 @@
 
 # Tooling scratch
 .playwright-mcp/
+/bin/

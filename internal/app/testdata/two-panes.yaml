@@ -1,0 +1,8 @@
+layout:
+  split: horizontal
+  ratios: [1, 1]
+  children:
+    - module: term
+      options: { cmd: [sh, -c, "printf LEFTPANE; sleep 30"] }
+    - module: term
+      options: { cmd: [sh, -c, "printf RIGHTPANE; sleep 30"] }

@@ -87,11 +87,11 @@ func (m *Module) Resize(w, h int) error {
 			"-" + strconv.FormatUint(seq.Add(1), 10))
 		s, err := session.Start(session.Spec{
 			ID: id, Argv: m.argv, Dir: m.dir, Width: w, Height: h,
+			OnUpdate: m.ctx.Wake,
 		})
 		if err != nil {
 			return err
 		}
-		s.OnUpdate = m.ctx.Wake
 		m.sess = s
 		if m.ctx.Sessions != nil {
 			m.ctx.Sessions.Add(s)

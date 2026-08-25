@@ -37,6 +37,15 @@ type Spec struct {
 	Env    []string // appended to the parent environment
 	Width  int
 	Height int
+
+	// OnUpdate, when set, is called after every chunk of process output. The
+	// UI uses it to schedule a redraw. It must not block.
+	//
+	// It belongs to the spec rather than to a settable field: a process can
+	// write its first line before the caller gets the Session back, and a
+	// callback installed afterwards would miss it — leaving that output on the
+	// emulator with nothing to trigger a repaint.
+	OnUpdate func()
 }
 
 // Session is a hosted process plus the emulator that interprets its output.
@@ -47,9 +56,7 @@ type Session struct {
 	// writes to it from its own goroutine while the UI reads cells.
 	Term vt.Terminal
 
-	// OnUpdate, when set, is called after every chunk of process output. The
-	// UI uses it to schedule a redraw. It must not block.
-	OnUpdate func()
+	onUpdate func()
 
 	ptmx *os.File
 	cmd  *exec.Cmd
@@ -88,6 +95,7 @@ func Start(sp Spec) (*Session, error) {
 	s := &Session{
 		ID:        sp.ID,
 		Term:      vt.NewSafeEmulator(sp.Width, sp.Height),
+		onUpdate:  sp.OnUpdate,
 		ptmx:      ptmx,
 		cmd:       cmd,
 		drainDone: make(chan struct{}),
@@ -112,8 +120,8 @@ func (s *Session) pumpOutput() {
 		n, err := s.ptmx.Read(buf)
 		if n > 0 {
 			_, _ = s.Term.Write(buf[:n])
-			if s.OnUpdate != nil {
-				s.OnUpdate()
+			if s.onUpdate != nil {
+				s.onUpdate()
 			}
 		}
 		if err != nil {
@@ -133,8 +141,8 @@ func (s *Session) pumpOutput() {
 	s.status = Exited
 	s.exitCode = code
 	s.mu.Unlock()
-	if s.OnUpdate != nil {
-		s.OnUpdate()
+	if s.onUpdate != nil {
+		s.onUpdate()
 	}
 }
 
