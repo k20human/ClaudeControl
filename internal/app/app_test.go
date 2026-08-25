@@ -367,3 +367,80 @@ func TestHelpPanelKeepsItsRightMargin(t *testing.T) {
 		}
 	}
 }
+
+// findRow returns the index of the first row containing text, or -1.
+func findRow(g *screen, text string) int {
+	for y := 0; y < g.h; y++ {
+		if strings.Contains(g.row(y), text) {
+			return y
+		}
+	}
+	return -1
+}
+
+// Everything the keyboard can answer, the mouse must be able to answer too.
+func TestPanelsAnswerToTheMouseAlone(t *testing.T) {
+	const W, H = 78, 24
+	s, snap := run(t, "testdata/two-echo.yaml", W, H)
+	waitForRow(t, snap, 0, "L>")
+	bar := waitForRow(t, snap, H-1, "quit").row(H - 1)
+
+	// Help closes on its own button.
+	click(t, s, columnOf(bar, "help"), H-1)
+	g := waitForAnywhere(t, snap, "[ close ]")
+	y := findRow(g, "[ close ]")
+	click(t, s, columnOf(g.row(y), "[ close ]")+2, y)
+	time.Sleep(300 * time.Millisecond)
+	if anywhere(snap(), "SHORTCUTS") {
+		t.Fatal("clicking close left the help panel open")
+	}
+
+	// Quit, answered with stay, keeps the application alive.
+	click(t, s, columnOf(bar, "quit"), H-1)
+	g = waitForAnywhere(t, snap, "[ stay ]")
+	y = findRow(g, "[ stay ]")
+	click(t, s, columnOf(g.row(y), "[ stay ]")+2, y)
+	time.Sleep(400 * time.Millisecond)
+	if st, _ := s.Status(); st == session.Exited {
+		t.Fatal("clicking stay quit the application")
+	}
+	if anywhere(snap(), "[ stay ]") {
+		t.Fatal("clicking stay left the confirmation open")
+	}
+
+	// Quit, answered with quit, ends it.
+	click(t, s, columnOf(bar, "quit"), H-1)
+	g = waitForAnywhere(t, snap, "[ quit ]")
+	y = findRow(g, "[ quit ]")
+	click(t, s, columnOf(g.row(y), "[ quit ]")+2, y)
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if st, _ := s.Status(); st == session.Exited {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("clicking quit did not end the application")
+}
+
+// A click anywhere else in the confirmation must be the safe answer.
+func TestClickingOutsideTheQuitButtonsStays(t *testing.T) {
+	const W, H = 78, 24
+	s, snap := run(t, "testdata/two-echo.yaml", W, H)
+	waitForRow(t, snap, 0, "L>")
+	bar := waitForRow(t, snap, H-1, "quit").row(H - 1)
+
+	click(t, s, columnOf(bar, "quit"), H-1)
+	g := waitForAnywhere(t, snap, "QUIT")
+	y := findRow(g, "QUIT")
+	click(t, s, columnOf(g.row(y), "QUIT"), y)
+
+	time.Sleep(400 * time.Millisecond)
+	if st, _ := s.Status(); st == session.Exited {
+		t.Fatal("a click away from the buttons quit the application")
+	}
+	if anywhere(snap(), "[ quit ]") {
+		t.Error("the confirmation is still open")
+	}
+}

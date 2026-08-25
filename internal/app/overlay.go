@@ -24,6 +24,7 @@ var (
 	panelFg   = color.RGBA{R: 0xc7, G: 0xd2, B: 0xe0, A: 0xff}
 	panelKey  = color.RGBA{R: 0x4d, G: 0xd0, B: 0xe1, A: 0xff}
 	panelWarn = color.RGBA{R: 0xe5, G: 0x6b, B: 0x6b, A: 0xff}
+	btnBg     = color.RGBA{R: 0x24, G: 0x2e, B: 0x3d, A: 0xff}
 )
 
 // helpLines builds the shortcut list from the binding table itself, so a
@@ -46,11 +47,15 @@ func helpLines() [][2]string {
 	return out
 }
 
-// drawOverlay paints the help panel or the quit confirmation.
+// drawOverlay paints the help panel or the quit confirmation, and records the
+// buttons a click can land on.
 func (a *App) drawOverlay(scr uv.Screen) {
+	a.panelButtons = nil
 	switch a.overlay {
 	case overlayHelp:
-		a.drawPanel(scr, "SHORTCUTS", helpLines(), "press any key or click to close", panelFg)
+		a.drawPanel(scr, "SHORTCUTS", helpLines(), "or press any key", panelFg, []panelAction{
+			{"[ close ]", false, func(a *App) { a.dismissOverlay(false) }},
+		})
 	case overlayQuit:
 		n := len(a.sessions.All())
 		what := fmt.Sprintf("Quit and end %d sessions?", n)
@@ -59,11 +64,19 @@ func (a *App) drawOverlay(scr uv.Screen) {
 		}
 		a.drawPanel(scr, "QUIT", [][2]string{
 			{"", what},
-			{"", ""},
-			{"y / enter", "quit"},
-			{"any other key", "stay"},
-		}, "sessions do not survive the application", panelWarn)
+			{"", "Sessions do not survive the application."},
+		}, "y or enter to quit — any other key to stay", panelWarn, []panelAction{
+			{"[ quit ]", true, func(a *App) { a.dismissOverlay(true) }},
+			{"[ stay ]", false, func(a *App) { a.dismissOverlay(false) }},
+		})
 	}
+}
+
+// panelAction is a clickable label at the foot of a panel.
+type panelAction struct {
+	label string
+	warn  bool
+	run   func(a *App)
 }
 
 // drawPanel centres a box over the panes.
@@ -71,13 +84,13 @@ func (a *App) drawOverlay(scr uv.Screen) {
 // It never encroaches on the status bar, and it drops the rows that do not fit
 // rather than painting outside itself: an overlay that spills is worse than an
 // overlay that is short, because what it spills onto is a live session.
-func (a *App) drawPanel(scr uv.Screen, title string, rows [][2]string, footer string, accent color.Color) {
+func (a *App) drawPanel(scr uv.Screen, title string, rows [][2]string, footer string, accent color.Color, actions []panelAction) {
 	avail := a.paneArea()
 
-	// Key column first: the rows are drawn aligned on the longest key, so the
-	// width of a row is that column plus its text, never its own key plus its
-	// text. Measuring the latter under-reports every row with a short key and
-	// a long description, and the panel loses its right-hand margin.
+	// Key column first: rows are drawn aligned on the longest key, so a row is
+	// as wide as that column plus its own text, never as its own key plus its
+	// text. Measuring the latter under-reports every short-key row and the
+	// panel loses its right-hand margin.
 	keyW := 0
 	for _, r := range rows {
 		if w := ansi.StringWidth(r[0]); w > keyW {
@@ -86,15 +99,34 @@ func (a *App) drawPanel(scr uv.Screen, title string, rows [][2]string, footer st
 	}
 	textW := ansi.StringWidth(title)
 	for _, r := range rows {
-		if w := keyW + 2 + ansi.StringWidth(r[1]); w > textW {
+		w := ansi.StringWidth(r[1])
+		if r[0] != "" {
+			w += keyW + 2
+		}
+		if w > textW {
 			textW = w
 		}
 	}
 	if w := ansi.StringWidth(footer); w > textW {
 		textW = w
 	}
+	actionsW := 0
+	for i, act := range actions {
+		if i > 0 {
+			actionsW += 2
+		}
+		actionsW += ansi.StringWidth(act.label)
+	}
+	if actionsW > textW {
+		textW = actionsW
+	}
 
-	const padX, chrome = 3, 6 // side padding; title, blank, footer and margins
+	const padX = 3
+	chrome := 6 // title, blank line, footer and margins
+	if len(actions) > 0 {
+		chrome += 2 // the button row and the blank line above it
+	}
+
 	w := textW + 2*padX
 	if w > avail.W {
 		w = avail.W
@@ -118,12 +150,44 @@ func (a *App) drawPanel(scr uv.Screen, title string, rows [][2]string, footer st
 	y := avail.Y + (avail.H-h)/2
 	fill(scr, layout.Rect{X: x, Y: y, W: w, H: h}, panelBg)
 	writeText(scr, x+padX, y+1, title, accent, panelBg)
+
 	for i, r := range shown {
 		if r[0] == "" && r[1] == "" {
 			continue
 		}
+		if r[0] == "" {
+			// A line with no key is a sentence, not a table row: it starts at
+			// the margin instead of hanging off an empty key column.
+			writeText(scr, x+padX, y+3+i, r[1], panelFg, panelBg)
+			continue
+		}
 		writeText(scr, x+padX, y+3+i, r[0], panelKey, panelBg)
 		writeText(scr, x+padX+keyW+2, y+3+i, r[1], panelFg, panelBg)
+	}
+
+	if len(actions) > 0 && h >= chrome {
+		by := y + h - 3
+		bx := x + padX
+		for _, act := range actions {
+			lw := ansi.StringWidth(act.label)
+			fg := color.Color(panelFg)
+			if act.warn {
+				fg = panelWarn
+			}
+			bg := color.Color(btnBg)
+			r := layout.Rect{X: bx, Y: by, W: lw, H: 1}
+			// Tested against the rectangle rather than looked up in
+			// panelButtons: that slice is still being built, and at this point
+			// it does not yet hold the button being drawn.
+			if a.pointerY == by && a.pointerX >= bx && a.pointerX < bx+lw {
+				fg, bg = barHotFg, barHotBg
+			}
+			writeText(scr, bx, by, act.label, fg, bg)
+			a.panelButtons = append(a.panelButtons, button{
+				label: act.label, rect: r, run: act.run, warn: act.warn,
+			})
+			bx += lw + 2
+		}
 	}
 	if h >= chrome {
 		writeText(scr, x+padX, y+h-2, footer, barCountFg, panelBg)
@@ -138,6 +202,7 @@ func (a *App) dismissOverlay(confirmed bool) bool {
 		a.quit = true
 	}
 	a.overlay = overlayNone
+	a.panelButtons = nil
 	a.clearNext = true
 	return true
 }

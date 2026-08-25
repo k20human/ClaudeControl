@@ -45,8 +45,13 @@ type App struct {
 	hoverDiv int
 	hoverBtn int
 
-	overlay overlayKind
-	buttons []button
+	overlay      overlayKind
+	buttons      []button
+	panelButtons []button
+
+	// pointerX and pointerY are the last reported pointer position, so a panel
+	// button can light up under it the way a status-bar button does.
+	pointerX, pointerY int
 
 	nextPane layout.PaneID
 	drag     *dragState
@@ -73,6 +78,8 @@ func New(cfgPath string) (*App, error) {
 		rects:    make(map[layout.PaneID]layout.Rect),
 		hoverDiv: -1,
 		hoverBtn: -1,
+		pointerX: -1,
+		pointerY: -1,
 		wake:     make(chan struct{}, 1),
 	}
 

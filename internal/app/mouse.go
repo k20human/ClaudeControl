@@ -82,9 +82,17 @@ func (a *App) handleMouse(ev uv.MouseEvent, m uv.Mouse) {
 		return
 	}
 
-	// A panel takes the whole screen until it is dismissed.
+	a.pointerX, a.pointerY = m.X, m.Y
+
+	// A panel takes the whole screen until it is dismissed. Its own buttons
+	// come first; a click anywhere else closes it without acting, which for
+	// the quit confirmation means staying.
 	if a.overlay != overlayNone {
 		if _, isClick := ev.(uv.MouseClickEvent); isClick {
+			if i := buttonAt(a.panelButtons, m.X, m.Y); i >= 0 {
+				a.panelButtons[i].run(a)
+				return
+			}
 			a.dismissOverlay(false)
 		}
 		return
