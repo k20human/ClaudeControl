@@ -8,13 +8,19 @@ import (
 )
 
 // dragState records an in-flight divider drag.
+//
+// Sizes are kept in cells, not in ratio units. Ratios are relative, so
+// converting a pointer movement into them means dividing by their sum: with
+// ratios [1 1] over sixty columns that quotient is zero until the pointer has
+// travelled thirty cells, and the divider simply does not move. Cells are what
+// the pointer speaks, and a split's ratios can hold cell counts just as well.
 type dragState struct {
 	parent *layout.Node
 	index  int
 	horiz  bool
 	origin int   // pointer position, along the split axis, where the drag began
-	ratios []int // the parent's ratios as they were when the drag began
-	total  int   // cells the parent actually distributes, dividers excluded
+	cells  []int // each child's size in cells when the drag began
+	min    int   // smallest a child may become, along the split axis
 }
 
 // paneAt returns the pane under the pointer, or 0 for chrome and empty space.
@@ -90,17 +96,17 @@ func (a *App) handleMouse(ev uv.MouseEvent, m uv.Mouse) {
 	}
 }
 
-// beginDrag records what a divider drag needs in order to adjust ratios.
+// beginDrag freezes the sizes a drag will work from.
 func (a *App) beginDrag(i int, m uv.Mouse) {
 	d := a.divs[i]
 	horiz := d.Rect.W == 1
-	origin, total := m.Y, d.Area.H
+	origin, span, min := m.Y, d.Area.H, layout.MinPaneH
 	if horiz {
-		origin, total = m.X, d.Area.W
+		origin, span, min = m.X, d.Area.W, layout.MinPaneW
 	}
 	// The split distributes everything except the one-cell divider strips.
-	total -= len(d.Parent.Children) - 1
-	if total < 1 {
+	span -= len(d.Parent.Children) - 1
+	if span < 2*min {
 		return
 	}
 	a.drag = &dragState{
@@ -108,13 +114,17 @@ func (a *App) beginDrag(i int, m uv.Mouse) {
 		index:  d.Index,
 		horiz:  horiz,
 		origin: origin,
-		ratios: append([]int(nil), d.Parent.Ratios...),
-		total:  total,
+		cells:  layout.Distribute(span, d.Parent.Ratios),
+		min:    min,
 	}
 }
 
 // continueDrag moves cells between the two siblings the divider separates, and
 // ends the drag on release.
+//
+// Every move is computed from the sizes frozen at the start rather than from
+// the previous position, so the divider tracks the pointer exactly and a drag
+// that wanders and comes back lands where it began.
 func (a *App) continueDrag(ev uv.MouseEvent, m uv.Mouse) {
 	d := a.drag
 	if _, released := ev.(uv.MouseReleaseEvent); released {
@@ -125,23 +135,21 @@ func (a *App) continueDrag(ev uv.MouseEvent, m uv.Mouse) {
 	if d.horiz {
 		pos = m.X
 	}
-	sum := 0
-	for _, r := range d.ratios {
-		sum += r
-	}
-	if sum <= 0 {
-		return
-	}
-	// Convert the movement in cells into ratio units so the divider tracks the
-	// pointer rather than drifting away from it.
-	shift := (pos - d.origin) * sum / d.total
+	delta := pos - d.origin
 
-	left := d.ratios[d.index] + shift
-	right := d.ratios[d.index+1] - shift
-	if left < 1 || right < 1 {
-		return
+	// Clamp so neither neighbour is squeezed below the minimum.
+	if lo := d.min - d.cells[d.index]; delta < lo {
+		delta = lo
 	}
-	d.parent.Ratios[d.index] = left
-	d.parent.Ratios[d.index+1] = right
+	if hi := d.cells[d.index+1] - d.min; delta > hi {
+		delta = hi
+	}
+
+	// Ratios are relative, so writing cell counts into them is exact: their
+	// sum is the span, and Distribute over that span returns them unchanged.
+	next := append([]int(nil), d.cells...)
+	next[d.index] += delta
+	next[d.index+1] -= delta
+	copy(d.parent.Ratios, next)
 	a.relayout()
 }
