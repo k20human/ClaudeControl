@@ -30,9 +30,9 @@ var bindings = []binding{
 	{[]string{"alt+n"}, "alt+n", "new session", func(a *App) { _ = a.newPane(layout.Horizontal) }},
 	{[]string{"alt+x"}, "alt+x", "close pane", func(a *App) { _ = a.closePane(a.focus) }},
 	{[]string{"alt+z"}, "alt+z", "zoom / restore", func(a *App) { a.toggleZoom() }},
-	{[]string{"alt+m"}, "alt+m", "rotate the split", func(a *App) { a.rotateFocusedSplit() }},
-	{[]string{"alt+s"}, "alt+s", "even out the split", func(a *App) { a.evenOutSplits() }},
-	{[]string{"alt+g"}, "alt+g", "shortcuts", func(a *App) { a.overlay = overlayHelp }},
+	{[]string{"alt+m"}, "alt+m", "flip the split: side by side <-> stacked", func(a *App) { a.rotateFocusedSplit() }},
+	{[]string{"alt+s"}, "alt+s", "reset every split to equal shares", func(a *App) { a.evenOutSplits() }},
+	{[]string{"alt+g"}, "alt+g", "this panel", func(a *App) { a.overlay = overlayHelp }},
 	{[]string{"alt+q"}, "alt+q", "quit", func(a *App) { a.overlay = overlayQuit }},
 }
 

@@ -5,6 +5,7 @@ import (
 	"image/color"
 
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 
 	"claudecontrol/internal/layout"
 )
@@ -73,17 +74,24 @@ func (a *App) drawOverlay(scr uv.Screen) {
 func (a *App) drawPanel(scr uv.Screen, title string, rows [][2]string, footer string, accent color.Color) {
 	avail := a.paneArea()
 
-	keyW, textW := 0, len(title)
+	// Key column first: the rows are drawn aligned on the longest key, so the
+	// width of a row is that column plus its text, never its own key plus its
+	// text. Measuring the latter under-reports every row with a short key and
+	// a long description, and the panel loses its right-hand margin.
+	keyW := 0
 	for _, r := range rows {
-		if len(r[0]) > keyW {
-			keyW = len(r[0])
+		if w := ansi.StringWidth(r[0]); w > keyW {
+			keyW = w
 		}
-		if w := len(r[0]) + 2 + len(r[1]); w > textW {
+	}
+	textW := ansi.StringWidth(title)
+	for _, r := range rows {
+		if w := keyW + 2 + ansi.StringWidth(r[1]); w > textW {
 			textW = w
 		}
 	}
-	if len(footer) > textW {
-		textW = len(footer)
+	if w := ansi.StringWidth(footer); w > textW {
+		textW = w
 	}
 
 	const padX, chrome = 3, 6 // side padding; title, blank, footer and margins

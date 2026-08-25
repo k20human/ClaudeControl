@@ -52,10 +52,10 @@ func TestComputeHorizontalSplitReservesTheDividerColumns(t *testing.T) {
 		Ratios:      []int{1, 1},
 		Children:    []*Node{leaf(1), leaf(2)},
 	}
-	got := Compute(root, Rect{X: 0, Y: 0, W: 22, H: 10})
+	got := Compute(root, Rect{X: 0, Y: 0, W: 21, H: 10})
 	want := map[PaneID]Rect{
 		1: {X: 0, Y: 0, W: 10, H: 10},
-		2: {X: 12, Y: 0, W: 10, H: 10},
+		2: {X: 11, Y: 0, W: 10, H: 10},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Compute = %v, want %v", got, want)
@@ -100,7 +100,7 @@ func TestDividersReportsOnePositionPerGap(t *testing.T) {
 		Ratios:      []int{1, 1, 1},
 		Children:    []*Node{leaf(1), leaf(2), leaf(3)},
 	}
-	got := Dividers(root, Rect{X: 0, Y: 0, W: 34, H: 10})
+	got := Dividers(root, Rect{X: 0, Y: 0, W: 32, H: 10})
 	if len(got) != 2 {
 		t.Fatalf("Dividers = %d entries, want 2", len(got))
 	}

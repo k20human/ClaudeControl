@@ -114,6 +114,19 @@ func waitForAnywhere(t *testing.T, snap func() *screen, want string) *screen {
 	return nil
 }
 
+// columnOf returns the screen column where text starts on a row, or -1.
+//
+// Not the byte offset: the status bar carries multi-byte glyphs, so a byte
+// index stopped matching a column the moment icons arrived. Widths come from
+// the same measurement the renderer uses.
+func columnOf(row, text string) int {
+	i := strings.Index(row, text)
+	if i < 0 {
+		return -1
+	}
+	return ansi.StringWidth(row[:i])
+}
+
 // anywhere reports whether the text is on screen right now.
 func anywhere(g *screen, want string) bool {
 	for y := 0; y < g.h; y++ {
@@ -253,7 +266,7 @@ func TestStatusBarOffersTheExpectedButtons(t *testing.T) {
 	waitForRow(t, snap, 0, "L>")
 
 	bar := waitForRow(t, snap, H-1, "quit").row(H - 1)
-	for _, label := range []string{"new", "close", "zoom", "rotate", "even", "help", "quit"} {
+	for _, label := range []string{"new", "close", "zoom", "flip", "equal", "help", "quit"} {
 		if !strings.Contains(bar, label) {
 			t.Errorf("status bar = %q, missing %q", bar, label)
 		}
@@ -272,7 +285,7 @@ func TestHelpPanelOpensOnClickAndSwallowsTheKeyThatClosesIt(t *testing.T) {
 	waitForRow(t, snap, 0, "R>")
 
 	bar := waitForRow(t, snap, H-1, "help").row(H - 1)
-	click(t, s, strings.Index(bar, "help"), H-1)
+	click(t, s, columnOf(bar, "help"), H-1)
 	waitForAnywhere(t, snap, "SHORTCUTS")
 
 	s.SendText("Z")
@@ -293,7 +306,7 @@ func TestQuitButtonAsksBeforeEndingEverything(t *testing.T) {
 	waitForRow(t, snap, 0, "L>")
 
 	bar := waitForRow(t, snap, H-1, "quit").row(H - 1)
-	click(t, s, strings.Index(bar, "quit"), H-1)
+	click(t, s, columnOf(bar, "quit"), H-1)
 	waitForAnywhere(t, snap, "QUIT")
 
 	// Anything but yes keeps the application alive.
@@ -304,7 +317,7 @@ func TestQuitButtonAsksBeforeEndingEverything(t *testing.T) {
 	}
 	waitForRow(t, snap, 0, "L>")
 
-	click(t, s, strings.Index(bar, "quit"), H-1)
+	click(t, s, columnOf(bar, "quit"), H-1)
 	waitForAnywhere(t, snap, "QUIT")
 	s.SendText("y")
 
@@ -316,4 +329,41 @@ func TestQuitButtonAsksBeforeEndingEverything(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatal("answering yes did not quit")
+}
+
+// The panel must keep a margin on its right. Rows are drawn aligned on the
+// longest key, so a row's width is that column plus its own text — measuring a
+// row by its own key instead under-reports every short-key row and the text
+// runs into the edge.
+func TestHelpPanelKeepsItsRightMargin(t *testing.T) {
+	const W, H = 78, 24
+	s, snap := run(t, "testdata/two-echo.yaml", W, H)
+	waitForRow(t, snap, 0, "L>")
+
+	bar := waitForRow(t, snap, H-1, "help").row(H - 1)
+	click(t, s, columnOf(bar, "help"), H-1)
+	g := waitForAnywhere(t, snap, "SHORTCUTS")
+
+	// The longest line in the panel decides its width.
+	widest, wy := 0, -1
+	for y := 0; y < g.h; y++ {
+		if r := g.row(y); strings.Contains(r, "alt+") || strings.Contains(r, "click") {
+			if w := ansi.StringWidth(r); w > widest {
+				widest, wy = w, y
+			}
+		}
+	}
+	if wy < 0 {
+		t.Fatal("no panel row found")
+	}
+
+	// Background-only cells are invisible in text, so the margin is read from
+	// the styling: the panel must still be painted past its longest line.
+	for _, dx := range []int{1, 2} {
+		c := g.CellAt(widest+dx-1, wy)
+		if c == nil || c.Style.Bg == nil {
+			t.Fatalf("column %d of row %d is outside the panel; it ends flush with its text",
+				widest+dx-1, wy)
+		}
+	}
 }

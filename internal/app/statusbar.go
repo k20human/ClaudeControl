@@ -5,6 +5,7 @@ import (
 	"image/color"
 
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 
 	"claudecontrol/internal/layout"
 )
@@ -27,29 +28,31 @@ type button struct {
 }
 
 // buildStatusBar lays the buttons out from the left, and returns them with the
-// rectangles a click is tested against. Labels are plain words on purpose:
-// decorative glyphs have an ambiguous display width, and a label that occupies
-// one column more than expected shifts every button after it, so the thing you
-// click stops being the thing you aimed at.
+// rectangles a click is tested against.
+//
+// Widths come from ansi.StringWidth, not from len. A glyph can occupy two
+// columns where its string holds one rune, and counting runes would shift every
+// button after it — so the thing you click would stop being the thing you aimed
+// at. Measuring the way the terminal measures is what makes icons safe here.
 func (a *App) buildStatusBar() []button {
 	items := []struct {
 		label string
 		run   func(a *App)
 		warn  bool
 	}{
-		{"new", func(a *App) { _ = a.newPane(layout.Horizontal) }, false},
-		{"close", func(a *App) { _ = a.closePane(a.focus) }, false},
-		{"zoom", func(a *App) { a.toggleZoom() }, false},
-		{"rotate", func(a *App) { a.rotateFocusedSplit() }, false},
-		{"even", func(a *App) { a.evenOutSplits() }, false},
-		{"help", func(a *App) { a.overlay = overlayHelp }, false},
+		{"+ new", func(a *App) { _ = a.newPane(layout.Horizontal) }, false},
+		{"× close", func(a *App) { _ = a.closePane(a.focus) }, false},
+		{"▣ zoom", func(a *App) { a.toggleZoom() }, false},
+		{"⇄ flip", func(a *App) { a.rotateFocusedSplit() }, false},
+		{"≡ equal", func(a *App) { a.evenOutSplits() }, false},
+		{"? help", func(a *App) { a.overlay = overlayHelp }, false},
 	}
 
 	y := a.area.H - 1
 	out := make([]button, 0, len(items)+1)
 	x := 1
 	for _, it := range items {
-		w := len(it.label) + 2
+		w := ansi.StringWidth(it.label) + 2
 		out = append(out, button{
 			label: it.label,
 			rect:  layout.Rect{X: x, Y: y, W: w, H: 1},
@@ -61,8 +64,8 @@ func (a *App) buildStatusBar() []button {
 
 	// Quit sits alone at the far right, away from "close", so that ending the
 	// whole application is never one slip away from closing a single pane.
-	const quit = "quit"
-	qw := len(quit) + 2
+	const quit = "⏻ quit"
+	qw := ansi.StringWidth(quit) + 2
 	if qx := a.area.W - qw - 1; qx > x {
 		out = append(out, button{
 			label: quit,
@@ -95,7 +98,7 @@ func (a *App) drawStatusBar(scr uv.Screen) {
 	if len(a.rects) == 1 {
 		count = "1 pane"
 	}
-	if x := a.area.W - len("quit") - 2 - 2 - len(count); x > 0 {
+	if x := a.area.W - ansi.StringWidth("⏻ quit") - 4 - ansi.StringWidth(count) - 2; x > 0 {
 		writeText(scr, x, y, count, barCountFg, barBg)
 	}
 }

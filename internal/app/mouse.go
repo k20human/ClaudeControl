@@ -34,9 +34,21 @@ func paneAt(rects map[layout.PaneID]layout.Rect, x, y int) layout.PaneID {
 }
 
 // dividerAt returns the index into divs of the strip under the pointer, or -1.
+//
+// The test rectangle is grown by GrabPad along the split axis. A one-column bar
+// is comfortable to look at and miserable to hit, so the visible bar and the
+// target it offers are deliberately different sizes.
 func dividerAt(divs []layout.DividerRect, x, y int) int {
 	for i, d := range divs {
-		if x >= d.Rect.X && x < d.Rect.X+d.Rect.W && y >= d.Rect.Y && y < d.Rect.Y+d.Rect.H {
+		r := d.Rect
+		if d.Parent != nil && d.Parent.Orientation == layout.Horizontal {
+			r.X -= layout.GrabPad
+			r.W += 2 * layout.GrabPad
+		} else {
+			r.Y -= layout.GrabPad
+			r.H += 2 * layout.GrabPad
+		}
+		if x >= r.X && x < r.X+r.W && y >= r.Y && y < r.Y+r.H {
 			return i
 		}
 	}

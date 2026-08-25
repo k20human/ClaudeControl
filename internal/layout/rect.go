@@ -7,13 +7,18 @@ const (
 	MinPaneH = 3
 )
 
-// Divider thickness, in cells. A terminal cell is roughly twice as tall as it
-// is wide, so two columns and one row look equally thick — and the wider
-// vertical bar is markedly easier to grab with a pointer.
+// Divider thickness, in cells. One cell each way: a filled bar one column wide
+// already reads heavier than a line glyph, and two columns turned it into a
+// slab. Ease of grabbing is handled separately, by widening the zone a click
+// is tested against rather than the bar itself — see GrabPad.
 const (
-	DividerW = 2
+	DividerW = 1
 	DividerH = 1
 )
+
+// GrabPad is how far either side of a divider still counts as grabbing it. The
+// bar stays thin while the target stays comfortable.
+const GrabPad = 1
 
 // Rect is a screen rectangle in cells. X and Y are zero-based.
 type Rect struct{ X, Y, W, H int }
