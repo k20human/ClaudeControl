@@ -179,9 +179,15 @@ func TestFocusRoutesTypingToTheFocusedPane(t *testing.T) {
 
 // click sends an SGR mouse press and release at a zero-based cell. SGR
 // coordinates are one-based, hence the offsets.
+//
+// The two sequences differ only in their final byte, M for press and m for
+// release. Emitted back to back they are decoded unreliably — the press is
+// sometimes reported as a second release — so they are spaced out. No real
+// mouse produces a press and a release in the same instant either.
 func click(t *testing.T, s *session.Session, x, y int) {
 	t.Helper()
 	s.SendText(fmt.Sprintf("\x1b[<0;%d;%dM", x+1, y+1))
+	time.Sleep(80 * time.Millisecond)
 	s.SendText(fmt.Sprintf("\x1b[<0;%d;%dm", x+1, y+1))
 	time.Sleep(150 * time.Millisecond)
 }

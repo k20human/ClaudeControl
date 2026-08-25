@@ -213,7 +213,11 @@ func (a *App) draw() {
 		if !ok {
 			continue
 		}
-		m.Draw(a.scr, uv.Rect(r.X, r.Y, r.W, r.H))
+		area := uv.Rect(r.X, r.Y, r.W, r.H)
+		m.Draw(a.scr, area)
+		if code, dead := a.exitedCode(id); dead {
+			exitedBanner(a.scr, area, code)
+		}
 	}
 	drawChrome(a.scr, a.rects, a.divs, a.focus)
 

@@ -21,6 +21,10 @@ var bindings = []binding{
 	{[]string{"alt+k"}, func(a *App) { a.focusDirection(Up) }},
 	{[]string{"alt+j"}, func(a *App) { a.focusDirection(Down) }},
 	{[]string{"alt+`"}, func(a *App) { a.setFocus(a.prev) }},
+	{[]string{"alt+n"}, func(a *App) { _ = a.newPane(layout.Horizontal) }},
+	{[]string{"alt+x"}, func(a *App) { _ = a.closePane(a.focus) }},
+	{[]string{"alt+z"}, func(a *App) { a.toggleZoom() }},
+	{[]string{"alt+q"}, func(a *App) { a.quit = true }},
 }
 
 func (a *App) handleKey(e uv.KeyPressEvent) {
