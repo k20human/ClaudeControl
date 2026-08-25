@@ -12,4 +12,4 @@ layout:
         - module: term
           options: { cmd: [bash] }
         - module: term
-          options: { cmd: [htop] }
+          options: { cmd: [top] }
