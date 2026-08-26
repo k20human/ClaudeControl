@@ -6,3 +6,8 @@
 # Tooling scratch
 .playwright-mcp/
 /bin/
+
+# Design notes and implementation plans. They are the record of how this was
+# built and why, and they are kept — locally. They name directories and
+# machines that have no business in a public repository.
+/docs/

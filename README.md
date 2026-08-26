@@ -1,92 +1,362 @@
 # ClaudeControl
 
-Un centre de contrôle en terminal pour Claude Code.
+A terminal control centre for [Claude Code](https://claude.com/claude-code):
+several live sessions in one window, beside the things you need while you work
+— the services your stack runs on, what your account has spent, and a panel
+that shows what Claude is doing.
 
-Plusieurs sessions Claude Code vivantes dans une seule fenêtre, pilotées à la
-souris ou au clavier, entourées de modules configurables — hologramme, liste
-des sessions, sondes de service, lanceur de tâches.
+It is a multiplexer specialised for one job rather than a general one. There is
+no tmux underneath: panes, sessions, mouse and keyboard are its own.
 
-Écrit en Go. Aucune dépendance à tmux.
+```
+┌ claude ─────────────────────────────┬─────────────────────────────┐
+│ > refactor the session pool         │      ⢠ ⣀        ▸ following │
+│                                     │   ⣀     ⠁  ⠐⠂     the thread│
+│                                     │                             │
+│                                     ├ services ───────────────────┤
+│                                     │ ▸ start  ⟳ restart  ■ stop  │
+│                                     │ [x] api      running  pid … │
+│                                     │ [x] web      running  pid … │
+│                                     │ [ ] mailhog  stopped        │
+└─────────────────────────────────────┴─────────────────────────────┘
+  + new  × close  ◫ list  ? help    usage 5h 42% · 7d 15%    ⏻ quit
+```
 
-## Démarrer
+## Requirements
+
+Go 1.26 or later, and Linux. The service supervisor reads `/proc`, so that part
+is Linux-only by construction; the rest would probably port, but has not been
+tried elsewhere.
+
+## Build and run
 
 ```sh
+git clone https://github.com/k20human/ClaudeControl.git
+cd ClaudeControl
 go build -o bin/claudecontrol ./cmd/claudecontrol
-./bin/claudecontrol                                     # une session, dossier courant
-./bin/claudecontrol -config examples/control-centre.yaml # tout
+
+./bin/claudecontrol -config examples/control-centre.yaml
 ```
 
-Sans fichier de configuration, une seule session Claude Code s'ouvre dans le
-dossier courant. Pour une configuration permanente :
+With no `-config`, it reads `$XDG_CONFIG_HOME/claudecontrol/config.yaml` —
+`~/.config/claudecontrol/config.yaml` unless you have said otherwise. There are
+ready-made files in [`examples/`](examples) to copy from:
 
-```sh
-mkdir -p ~/.config/claudecontrol
-cp examples/control-centre.yaml ~/.config/claudecontrol/config.yaml
-```
-
-## Raccourcis
-
-| Touche | Action |
+| File | What it shows |
 |---|---|
-| `Alt+h j k l` | Déplacer le focus |
-| `` Alt+` `` | Panneau précédent |
-| `Alt+n` / `Alt+x` | Nouvelle session / fermer le panneau |
-| `Alt+z` | Plein écran, et retour |
-| `Alt+m` / `Alt+s` | Pivoter la scission / parts égales |
-| `Alt+Espace` | Liste des sessions |
-| `Alt+,` | Réglages du panneau focalisé |
-| `Alt+/` | Palette de commandes |
-| `Alt+g` | Aide |
-| `Alt+q` | Quitter, avec confirmation |
-
-À la souris : cliquer focalise un panneau, recliquer transmet le clic à
-l'invité, tirer un séparateur redimensionne. La barre du bas est entièrement
-cliquable.
-
-## Modules
-
-| Module | Rôle |
-|---|---|
-| `claude` | Une session Claude Code, avec identité imposée et remontée d'état |
-| `term` | N'importe quelle commande dans un panneau |
-| `sessions` | Toutes les sessions, attachées ou non, et laquelle vous attend |
-| `hologram` | Sphère à particules, jauge circulaire ou avatar d'état |
-| `services` | Sondes de service : commande, HTTP, port TCP |
-| `tasks` | Vos commandes fréquentes, et leur sortie |
-
-Chaque module publie ses réglages ; le menu `Alt+,` se construit à partir de
-ces descriptions. Enregistrer réécrit la configuration **en préservant vos
-commentaires**.
-
-## Voyant d'attente
-
-Les sessions Claude Code sont lancées avec nos propres hooks, injectés par
-`--settings` — votre `settings.json` global n'est pas touché. Quand l'une
-d'elles demande une permission, la barre du bas affiche `N waiting`, sans que
-vous ayez à regarder ce panneau-là.
-
-## Limites assumées
-
-- **Fermer l'application arrête les sessions.** Pas de démon détaché comme
-  tmux. Les identifiants sont enregistrés, une reprise par `--resume` reste à
-  câbler au démarrage.
-- **Pas de coût monétaire.** Il exigerait une table de prix par modèle qui
-  devient fausse en silence.
-- **Pas de glisser-déposer** d'un panneau vers un autre endroit de l'arbre.
-
-Ces choix sont argumentés dans la spec, section 11.
-
-## Contenu
-
-| Chemin | Rôle |
-|---|---|
-| `docs/superpowers/specs/` | La conception, et tous les défauts trouvés en route |
-| `docs/superpowers/plans/` | Les cinq plans d'implémentation |
-| `examples/` | Configurations prêtes à l'emploi |
-| `proto/hologram/` | Prototype jetable — a servi à valider le rendu à l'œil, n'est pas dans le produit |
-
-## Tests
+| `control-centre.yaml` | Everything at once |
+| `local-stack.yaml` | A session beside the services it works on |
+| `two-claude.yaml` | Two Claude sessions side by side |
+| `shells.yaml` | Plain terminals, no Claude |
+| `hologram.yaml` | The animated panel on its own |
 
 ```sh
 go test ./... -race
 ```
+
+---
+
+# The configuration file
+
+One YAML file describes the whole window. It has a single required key,
+`layout`, which is a tree: either a **pane** running one module, or a **split**
+holding other nodes.
+
+## A pane
+
+```yaml
+layout:
+  module: claude          # which module fills the pane
+  options:                # what that module accepts — see below
+    dir: ~/projects/api
+```
+
+`options` is optional, and its contents belong entirely to the module. An
+unknown module name is an error that names the ones that exist, rather than an
+empty pane you have to work out for yourself.
+
+## A split
+
+```yaml
+layout:
+  split: horizontal       # horizontal = side by side, vertical = stacked
+  ratios: [3, 2]          # relative shares, one per child
+  children:
+    - module: claude
+    - module: hologram
+```
+
+`ratios` may be omitted, in which case the children share the space equally. It
+must otherwise have exactly one entry per child. Splits nest, so a column of
+panes beside another pane is a split whose second child is itself a split:
+
+```yaml
+layout:
+  split: horizontal
+  ratios: [3, 2]
+  children:
+    - module: claude
+      options: { dir: ~/projects/api }
+
+    - split: vertical
+      ratios: [2, 3]
+      children:
+        - module: hologram
+        - module: supervisor
+          options:
+            services:
+              - { name: api, cmd: [npm, run, dev], dir: ~/projects/api }
+```
+
+A pane is never smaller than 8 columns by 4 rows — one of those rows is its
+title. A split that cannot give every child that much is not laid out at all,
+and the previous arrangement is kept.
+
+## Paths
+
+Every `dir` accepts `~` and environment variables, because a configuration file
+is written by hand: `~/projects/$USER/api` resolves the way you would expect.
+Everything else is taken literally.
+
+## Editing it while it runs
+
+`alt+,` opens the settings menu, built from what the module in the focused pane
+publishes — nothing in that menu is written per module. Saving writes the
+values back into this file **through its syntax tree**, so comments, ordering
+and formatting all survive. A file you have commented is still your file after
+the application has written to it.
+
+---
+
+# The modules
+
+## `claude` — a Claude Code session
+
+```yaml
+- module: claude
+  options:
+    dir: ~/projects/api      # working directory
+    bin: claude              # the executable, if it is not `claude` on the PATH
+    resume: <session-id>     # resume an existing session instead of starting one
+    args: [--model, opus]    # extra arguments, appended
+```
+
+The session is given a stable identity, so closing its pane does not end it and
+reopening finds it again. Hooks are wired automatically, through `--settings`
+on that session alone — **your global `settings.json` is not touched**. That is
+how the rest of the interface knows when a session is thinking, waiting for
+you, or done, and how the bar comes to say `N waiting`.
+
+The pane is named after the session: Claude Code gives each one a title, and
+that title is what appears above the pane rather than the directory.
+
+## `term` — any other command
+
+```yaml
+- module: term
+  options:
+    cmd: [zsh]               # defaults to your $SHELL
+    dir: ~/projects
+```
+
+A plain hosted terminal, for a shell beside a session or anything that is not
+Claude.
+
+## `supervisor` — the processes your stack runs on
+
+Starts, stops and restarts long-lived services, and shows what each one is
+doing. Three modules touch processes and are worth telling apart: `tasks` runs
+a command **once**, `services` asks whether something already running
+**answers**, and this one **owns** the processes.
+
+```yaml
+- module: supervisor
+  options:
+    stop_grace: 5            # seconds before SIGKILL, default 5
+    services:
+      - name: api            # required
+        cmd: [npm, run, dev] # required
+        dir: ~/projects/api  # where to run it
+        env: [PORT=3000]     # added to the environment
+        autostart: false     # start it when the pane appears, default false
+        optional: false      # leave it unticked, default false
+```
+
+**Nothing starts on its own** unless `autostart: true`. Press the start button,
+or `s`, and every ticked service goes up together.
+
+**`optional: true`** leaves a service listed but unticked, so "start" means your
+usual set rather than everything that exists. Declaring it alongside
+`autostart` is refused rather than resolved quietly — one says launch it now,
+the other says leave it out.
+
+**A service that dies stays dead**, showing its exit code. Resurrecting it
+would hide the failure behind a row reading `running` while nothing works.
+
+**Services already running are adopted.** The module walks `/proc` every five
+seconds, and on demand with `⟲ scan`, and takes over any process whose working
+directory *and* command line both match — the directory alone would not do,
+since a project can run a front end and a back end at once. A service you
+started in another terminal can then be watched, stopped and restarted from
+here. Its **output cannot be read**: that output went wherever it was going
+before the module found it. Restarting brings the service under supervision,
+and its output with it.
+
+**Stopping signals the whole process tree, never the process group.**
+`npm run dev` is a launcher whose real server is one of its children, and
+signalling only the child leaves that server holding its port. A service
+adopted from a shell also shares that shell's process group, so signalling the
+group would kill the terminal you are sitting in.
+
+In the pane: click a name for its output, or a checkbox to tick it. From the
+keyboard, `↑ ↓` moves, `space` ticks, `a` ticks everything or nothing, `enter`
+opens the output, and `s` `r` `x` start, restart and stop the ticked ones.
+
+## `services` — is it up?
+
+Health checks for things you did not start. Each check is a command, an HTTP
+URL or a TCP address.
+
+```yaml
+- module: services
+  options:
+    interval: 5              # seconds between rounds
+    checks:
+      - { name: network, cmd: [sh, -c, "ip route | grep -q default"] }
+      - { name: docker,  cmd: [sh, -c, "test -S /var/run/docker.sock"] }
+      - { name: api,     http: http://localhost:3000/health }
+      - { name: redis,   tcp: localhost:6379 }
+```
+
+Every check in a round runs concurrently with its own deadline, so one endpoint
+that hangs does not decide how long the round takes.
+
+## `tasks` — commands you run now and then
+
+```yaml
+- module: tasks
+  options:
+    tasks:
+      - { name: test,  cmd: [go, test, ./...], dir: ~/projects/api }
+      - { name: build, cmd: [go, build, ./...], dir: ~/projects/api }
+```
+
+Select with `↑ ↓`, run with `enter`. The task takes over the pane while it
+runs, and it is interactive: a command that asks a question can be answered.
+
+## `stats` — tokens and account budgets
+
+```yaml
+- module: stats
+  options:
+    interval: 180            # seconds between readings, default 180
+    account: true            # ask for the account budgets at all, default true
+    endpoint: ""             # override the endpoint, for testing
+    credentials: ""          # override the path to the OAuth credentials
+```
+
+Per-session figures — model, context, share served from cache, thinking tokens
+— come from the transcripts on disk and cost nothing.
+
+The five-hour and weekly budgets are **the only thing in this application that
+reaches the network**. They are not on disk: they are read with the OAuth token
+Claude Code stores, from the endpoint Claude Code itself calls. That endpoint is
+internal and carries no compatibility promise, so a missing field, an unexpected
+shape or a refused request is reported as unavailable **with its reason** —
+never filled in with a number nobody can check, because a blank reading and a
+zero reading must never look alike. **`account: false` removes that request
+entirely** and keeps everything local.
+
+While a stats pane exists, the status bar reprises the two shares, in the widest
+form that fits without costing you the buttons.
+
+## `hologram` — the panel that shows what Claude is doing
+
+```yaml
+- module: hologram
+  options:
+    style: sphere            # sphere, ring or avatar
+    readout: right           # right, left or off — the text column
+    speed: 0.18              # flow speed
+    trail: 0.90              # how much of a dot survives each frame
+    density: 1               # multiplier over the automatic particle count
+    rotation: 0.09           # radians per second
+    breath: 9                # seconds for one brightness cycle, 0 to disable
+```
+
+A particle sphere drawn in braille. Its **motion changes with what the sessions
+are doing**: resting drifts slow and deep, thinking is quick and coherent,
+waiting on you is nearly still and swept by a band of light, and a session that
+has ended loses its coherence. Transitions ease over about a second, so a
+change of state is something you watch happen. Each turn of conversation fires
+a spark along a great circle — nothing fires on a timer, so a quiet panel means
+quiet sessions.
+
+The text column carries an ambient line and then what actually happened: a
+session appearing, a state changing, a turn landing. **No conversation content
+ever reaches it.** The ambient line is decoration, and decoration on a control
+panel has one rule: it must never be mistakable for a statement about what the
+machine is doing. Each line is drawn from the pool of the state the sessions are
+really in, and none cites a figure or names an operation.
+
+The column disappears below 44 columns of pane and the sphere takes the whole
+width. The five numbers above are also sliders in the settings menu.
+
+## `sessions`
+
+The session list, reached with `alt+space`. It takes no options and is not
+normally placed in the layout: it is an overlay you consult and dismiss, not a
+pane that would rearrange the window every time.
+
+---
+
+# Keys and mouse
+
+| | |
+|---|---|
+| `alt+h` `alt+j` `alt+k` `alt+l` | move the focus left, down, up, right |
+| ``alt+` `` | previous pane |
+| `alt+n` / `alt+x` | new session / close pane |
+| `alt+z` | zoom the focused pane, and back |
+| `alt+m` / `alt+s` | flip a split / reset every split to equal shares |
+| `alt+r` | pick this pane up, then click where it lands |
+| `alt+space` / `alt+,` / `alt+/` | sessions, settings, command palette |
+| `alt+g` / `alt+q` | help, quit |
+
+Every one of these is a button in the bottom bar as well. A narrow window drops
+the least important buttons rather than overlapping them; the keyboard and the
+help panel still reach everything.
+
+With the mouse: click a pane to focus it — that first click is **swallowed**, so
+moving to a pane can never trigger something inside it. Drag a divider to
+resize. `alt`-drag a pane to move it: dropping it on the middle of another
+**swaps** the two, dropping it on a side **inserts** it there. Everything else
+goes to the guest, translated into the coordinates it expects.
+
+Every `alt+` combination above was checked against the Claude Code binary, and
+none of them is one Claude Code consumes.
+
+---
+
+# What it deliberately does not do
+
+- **No detaching.** Closing the application ends the processes it started.
+  Adopted services survive it; sessions and supervised services do not.
+- **No monetary cost.** Token counts are shown as absolute numbers, never
+  converted to money, and never as a percentage of a context window whose
+  published value goes stale without saying so.
+- **No automatic restart** of a service that crashed. A crash is information.
+
+# Repository
+
+| Path | What it is |
+|---|---|
+| `cmd/claudecontrol/` | The entry point |
+| `internal/` | Layout, sessions, the bus, rendering, the hologram maths |
+| `modules/` | One directory per module |
+| `examples/` | Configurations to copy from |
+| `proto/hologram/` | A throwaway prototype, kept only because it is what validated the hologram by eye. Not part of the product. |
+
+# Licence
+
+MIT — see [LICENSE](LICENSE).
