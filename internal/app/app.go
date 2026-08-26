@@ -4,6 +4,7 @@ package app
 import (
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
@@ -15,6 +16,7 @@ import (
 	"claudecontrol/internal/module"
 	"claudecontrol/internal/pool"
 	"claudecontrol/internal/session"
+	"claudecontrol/internal/transcript"
 )
 
 // redrawInterval coalesces bursts of guest output into one repaint. Without
@@ -32,6 +34,9 @@ type App struct {
 	bus   *bus.Bus
 	pool  *pool.Pool
 	hooks *hooks.Listener
+
+	tailerMu sync.Mutex
+	tailers  map[string]*transcript.Tailer
 
 	// binary is our own executable, which sessions invoke in --hook mode.
 	binary string
@@ -158,6 +163,11 @@ func (a *App) moduleContext(id layout.PaneID) module.Context {
 // pumpHooks turns hook payloads into session states.
 func (a *App) pumpHooks() {
 	for p := range a.hooks.Events() {
+		// The payload is the only authority on where a transcript lives: the
+		// folder name derives from the working directory, two sessions can
+		// share one, and a session can be relocated.
+		a.followTranscript(p.SessionID, p.TranscriptPath)
+
 		st, ok := pool.StateForHook(p.Event)
 		if !ok {
 			continue
@@ -197,6 +207,7 @@ func (a *App) Run() error {
 		if a.hooks != nil {
 			_ = a.hooks.Close()
 		}
+		a.stopTranscripts()
 		_ = a.pool.CloseAll()
 		a.bus.Close()
 		a.scr.ExitAltScreen()
