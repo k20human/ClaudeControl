@@ -65,6 +65,7 @@ func (m *Module) drawList(scr uv.Screen, area uv.Rectangle) {
 		{"▸ start", (*Module).StartPicked},
 		{"⟳ restart", (*Module).RestartPicked},
 		{"■ stop", (*Module).StopPicked},
+		{"⟲ scan", (*Module).Scan},
 	} {
 		w := ansi.StringWidth(b.label) + 2
 		if x+w > area.Max.X {
@@ -149,7 +150,13 @@ func (m *Module) drawRow(scr uv.Screen, area uv.Rectangle, y, i int, s *service,
 	switch s.state {
 	case Running:
 		fg = fgUp
-		if s.sess != nil {
+		switch {
+		case s.adopted != nil:
+			// No uptime: this process was found, not started, and the moment
+			// it began was never measured. A number here would be the moment
+			// we noticed, dressed up as something else.
+			detail = fmt.Sprintf("pid %-8d adopted · no logs", s.adopted.Pid)
+		case s.sess != nil:
 			detail = fmt.Sprintf("pid %-8d %s", s.sess.Pid(), forHowLong(s.since))
 		}
 	case Exited:
@@ -172,6 +179,7 @@ func (m *Module) drawLogs(scr uv.Screen, area uv.Rectangle, i int) {
 	}
 	s := m.svcs[i]
 	sess := s.sess
+	adopted := s.adopted
 	title := fmt.Sprintf("logs · %s", s.spec.Name)
 	state := s.state
 	m.hits = append(m.hits, hit{
@@ -192,11 +200,26 @@ func (m *Module) drawLogs(scr uv.Screen, area uv.Rectangle, i int) {
 		return
 	}
 	if sess == nil {
-		render.Text(scr, body.Min.X+1, body.Min.Y,
-			"not running — press s, or the start button, to see its output", fgMuted, bgPanel)
+		lines := []string{"not running — press s, or the start button, to see its output"}
 		if state == Exited {
-			render.Text(scr, body.Min.X+1, body.Min.Y+1,
-				"the output of the run that ended is gone with its process", fgMuted, bgPanel)
+			lines = append(lines, "the output of the run that ended is gone with its process")
+		}
+		if adopted != nil {
+			// Saying why costs two lines and saves the search for a setting
+			// that does not exist.
+			lines = []string{
+				fmt.Sprintf("running as pid %d, started outside this application", adopted.Pid),
+				"",
+				"its output went wherever it was going before we found it, and",
+				"cannot be recovered. restart it — press r — to run it here and",
+				"read it from the start.",
+			}
+		}
+		for i, line := range lines {
+			if body.Min.Y+i >= body.Max.Y {
+				break
+			}
+			render.Text(scr, body.Min.X+1, body.Min.Y+i, clip(line, body.Dx()-2), fgMuted, bgPanel)
 		}
 		return
 	}

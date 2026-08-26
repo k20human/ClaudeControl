@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"claudecontrol/internal/module"
+	"claudecontrol/internal/procs"
 	"claudecontrol/internal/session"
 )
 
@@ -62,8 +63,14 @@ func (s State) String() string {
 
 // service is one configured process and whatever is currently true of it.
 type service struct {
-	spec  Spec
-	sess  *session.Session
+	spec Spec
+	sess *session.Session
+
+	// adopted is a process this application did not start. It can be watched
+	// and stopped, but not read: its output went wherever it was going before
+	// we noticed it, and no amount of wanting it back will produce it.
+	adopted *procs.Proc
+
 	state State
 	code  int
 	since time.Time
@@ -87,6 +94,10 @@ type Module struct {
 	showing int
 
 	cols, rows int
+
+	// scanning stops when the module closes.
+	scanning chan struct{}
+	scanOnce sync.Once
 	// hits are the clickable regions, republished on every frame rather than
 	// held in a table that could drift from what is drawn.
 	hits []hit
@@ -100,7 +111,7 @@ type hit struct {
 
 // New builds the module from its configuration.
 func New(cfg map[string]any) (module.Module, error) {
-	m := &Module{grace: DefaultGrace, showing: -1}
+	m := &Module{grace: DefaultGrace, showing: -1, scanning: make(chan struct{})}
 	if v, ok := toFloat(cfg["stop_grace"]); ok && v > 0 {
 		m.grace = time.Duration(v * float64(time.Second))
 	}
@@ -174,13 +185,99 @@ func expand(p string) string {
 func (m *Module) Init(ctx module.Context) error {
 	m.ctx = ctx
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	for _, s := range m.svcs {
 		if s.spec.Autostart {
 			m.startLocked(s)
 		}
 	}
+	m.mu.Unlock()
+
+	// A service you started in another terminal is still your service. Finding
+	// it now means the pane opens showing what is true rather than claiming
+	// everything is down.
+	m.Scan()
+	go m.scanLoop()
 	return nil
+}
+
+// ScanInterval is how often already-running services are looked for. Slow on
+// purpose: it walks /proc, and a service you started elsewhere is not urgent
+// news.
+const ScanInterval = 5 * time.Second
+
+func (m *Module) scanLoop() {
+	tick := time.NewTicker(ScanInterval)
+	defer tick.Stop()
+	for {
+		select {
+		case <-m.scanning:
+			return
+		case <-tick.C:
+			m.Scan()
+		}
+	}
+}
+
+// Scan looks for services already running and takes them over.
+//
+// Only for services this module is not already running: one it started is
+// known exactly, and one it has adopted is checked by Alive instead.
+func (m *Module) Scan() {
+	m.mu.Lock()
+	wanted := false
+	for _, s := range m.svcs {
+		if s.sess == nil && s.adopted == nil && s.spec.Dir != "" {
+			wanted = true
+			break
+		}
+	}
+	m.mu.Unlock()
+	if !wanted {
+		return
+	}
+
+	// One walk of /proc for every service, rather than one per service.
+	all, err := procs.All()
+	if err != nil {
+		return
+	}
+
+	m.mu.Lock()
+	changed := false
+	for _, s := range m.svcs {
+		if s.sess != nil || s.adopted != nil || s.spec.Dir == "" {
+			continue
+		}
+		for i := range all {
+			if !matches(all[i], s.spec) {
+				continue
+			}
+			found := all[i]
+			s.adopted, s.state, s.since = &found, Running, time.Now()
+			changed = true
+			break
+		}
+	}
+	m.mu.Unlock()
+
+	if changed && m.ctx.Wake != nil {
+		m.ctx.Wake()
+	}
+}
+
+// matches reports whether a process is this service, by what it runs and where.
+// The directory alone would not do: a project can run two scripts at once,
+// which is exactly what a front end and its back end do.
+func matches(p procs.Proc, spec Spec) bool {
+	if p.Cwd != spec.Dir || len(p.Cmdline) != len(spec.Argv) {
+		return false
+	}
+	for i := range p.Cmdline {
+		if p.Cmdline[i] != spec.Argv[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // Title names the pane for what it holds.
@@ -209,6 +306,7 @@ func logArea(w, h int) (int, int) {
 // Close ends every service. This is what keeps a quit from leaving a stack
 // running with nothing left to manage it.
 func (m *Module) Close() error {
+	m.scanOnce.Do(func() { close(m.scanning) })
 	m.mu.Lock()
 	svcs := append([]*service(nil), m.svcs...)
 	grace := m.grace
@@ -237,7 +335,18 @@ func (m *Module) Close() error {
 // failure behind a row that reads "running" while nothing works.
 func (m *Module) refreshLocked() {
 	for _, s := range m.svcs {
-		if s.state != Running || s.sess == nil {
+		if s.state != Running {
+			continue
+		}
+		if s.adopted != nil {
+			// No exit code: we never waited on it, so we do not know how it
+			// ended and will not invent a number.
+			if !s.adopted.Alive() {
+				s.adopted, s.state, s.since = nil, Stopped, time.Now()
+			}
+			continue
+		}
+		if s.sess == nil {
 			continue
 		}
 		if st, code := s.sess.Status(); st == session.Exited {
@@ -251,6 +360,13 @@ func (m *Module) startLocked(s *service) {
 	if s.state == Running {
 		return
 	}
+	if s.adopted != nil && s.adopted.Alive() {
+		// Already up, elsewhere. Starting a second copy is how two servers
+		// come to fight over one port.
+		s.state = Running
+		return
+	}
+	s.adopted = nil
 	if s.sess != nil {
 		_ = s.sess.Close()
 		s.sess = nil
@@ -277,6 +393,17 @@ func (m *Module) startLocked(s *service) {
 
 // stopLocked ends a service, politely first.
 func (m *Module) stopLocked(s *service) {
+	if s.adopted != nil {
+		p, grace := *s.adopted, m.grace
+		s.adopted, s.state, s.since = nil, Stopped, time.Now()
+		go func() {
+			_ = p.Terminate(grace)
+			if m.ctx.Wake != nil {
+				m.ctx.Wake()
+			}
+		}()
+		return
+	}
 	if s.sess == nil {
 		s.state = Stopped
 		return
@@ -330,27 +457,37 @@ func (m *Module) RestartPicked() {
 	picked := m.pickedLocked()
 	grace := m.grace
 	type pair struct {
-		s    *service
-		sess *session.Session
+		s       *service
+		sess    *session.Session
+		adopted *procs.Proc
 	}
 	going := make([]pair, 0, len(picked))
 	for _, s := range picked {
-		going = append(going, pair{s, s.sess})
-		s.sess, s.state = nil, Stopped
+		going = append(going, pair{s, s.sess, s.adopted})
+		s.sess, s.adopted, s.state = nil, nil, Stopped
 	}
 	m.mu.Unlock()
 
 	go func() {
 		var wg sync.WaitGroup
 		for _, p := range going {
-			if p.sess == nil {
-				continue
+			switch {
+			case p.sess != nil:
+				wg.Add(1)
+				go func(sess *session.Session) {
+					defer wg.Done()
+					_ = sess.Terminate(grace)
+				}(p.sess)
+			case p.adopted != nil:
+				// Restarting is how an adopted service comes back under
+				// supervision, and with it the output that could not be read
+				// before.
+				wg.Add(1)
+				go func(proc procs.Proc) {
+					defer wg.Done()
+					_ = proc.Terminate(grace)
+				}(*p.adopted)
 			}
-			wg.Add(1)
-			go func(sess *session.Session) {
-				defer wg.Done()
-				_ = sess.Terminate(grace)
-			}(p.sess)
 		}
 		wg.Wait()
 
@@ -374,6 +511,10 @@ type Snapshot struct {
 	Pid    int
 	Since  time.Time
 	Picked bool
+
+	// Adopted marks a process this application did not start. It can be
+	// watched and stopped; its output cannot be read.
+	Adopted bool
 }
 
 // Services is the current state of every configured service.
@@ -387,8 +528,11 @@ func (m *Module) Services() []Snapshot {
 			Name: s.spec.Name, State: s.state, Code: s.code,
 			Since: s.since, Picked: s.picked,
 		}
-		if s.sess != nil {
+		switch {
+		case s.sess != nil:
 			snap.Pid = s.sess.Pid()
+		case s.adopted != nil:
+			snap.Pid, snap.Adopted = s.adopted.Pid, true
 		}
 		out = append(out, snap)
 	}

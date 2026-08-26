@@ -2,6 +2,7 @@ package supervisor_test
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"claudecontrol/internal/module"
+	"claudecontrol/internal/procs"
 	"claudecontrol/modules/supervisor"
 )
 
@@ -367,4 +369,144 @@ func TestTheNameColumnFollowsTheLongestName(t *testing.T) {
 	if a < 0 || a != b {
 		t.Errorf("the state column is ragged: %d against %d\n%s", a, b, out)
 	}
+}
+
+// A service you started in another terminal is still your service. The pane
+// has to show what is true rather than claim everything is down.
+func TestAServiceAlreadyRunningIsAdopted(t *testing.T) {
+	dir := t.TempDir()
+	outside := outsideService(t, dir, "sleep 300")
+
+	m := build(t, map[string]any{"services": []any{
+		map[string]any{"name": "already", "cmd": []any{"sh", "-c", "sleep 300"}, "dir": dir},
+	}})
+
+	waitFor(t, "the adoption", func() bool {
+		m.Scan()
+		got := stateOf(m, "already")
+		return got.State == supervisor.Running && got.Adopted
+	})
+	if got := stateOf(m, "already").Pid; got != outside.Pid {
+		t.Errorf("adopted pid %d, want %d", got, outside.Pid)
+	}
+
+	// The row says so, and says what it costs.
+	out := paint(t, m, 80, 8).text()
+	if !strings.Contains(out, "adopted") || !strings.Contains(out, "no logs") {
+		t.Errorf("the row does not report the adoption:\n%s", out)
+	}
+}
+
+// Starting a service already running is how two servers come to fight over one
+// port.
+func TestStartingAnAdoptedServiceDoesNotLaunchASecond(t *testing.T) {
+	dir := t.TempDir()
+	outside := outsideService(t, dir, "sleep 300")
+
+	m := build(t, map[string]any{"services": []any{
+		map[string]any{"name": "already", "cmd": []any{"sh", "-c", "sleep 300"}, "dir": dir},
+	}})
+	waitFor(t, "the adoption", func() bool {
+		m.Scan()
+		return stateOf(m, "already").Adopted
+	})
+
+	m.StartPicked()
+	time.Sleep(300 * time.Millisecond)
+	got := stateOf(m, "already")
+	if !got.Adopted || got.Pid != outside.Pid {
+		t.Errorf("start replaced the adopted process: %+v", got)
+	}
+	if n := countProcs(t, dir); n != 1 {
+		t.Errorf("%d processes are running in %s, want 1", n, dir)
+	}
+}
+
+// Stopping an adopted service ends it and its children, and leaves the shell
+// that launched it alone.
+func TestStoppingAnAdoptedServiceEndsIt(t *testing.T) {
+	dir := t.TempDir()
+	pid := outsideService(t, dir, "sleep 300").Pid
+
+	m := build(t, map[string]any{
+		"stop_grace": 2,
+		"services": []any{
+			map[string]any{"name": "already", "cmd": []any{"sh", "-c", "sleep 300"}, "dir": dir},
+		}})
+	waitFor(t, "the adoption", func() bool {
+		m.Scan()
+		return stateOf(m, "already").Adopted
+	})
+
+	m.StopPicked()
+	waitFor(t, "the process to go", func() bool {
+		_, err := os.Stat(filepath.Join("/proc", strconv.Itoa(pid)))
+		return err != nil
+	})
+	if got := stateOf(m, "already").State; got != supervisor.Stopped {
+		t.Errorf("the service is %v after stopping", got)
+	}
+}
+
+// Restarting is how an adopted service comes back under supervision, and with
+// it the output that could not be read before.
+func TestRestartingAnAdoptedServiceBringsItUnderSupervision(t *testing.T) {
+	dir := t.TempDir()
+	script := "printf HELLO-FROM-THE-SERVICE; sleep 300"
+	was := outsideService(t, dir, script).Pid
+
+	m := build(t, map[string]any{
+		"stop_grace": 2,
+		"services": []any{
+			map[string]any{"name": "already", "cmd": []any{"sh", "-c", script}, "dir": dir},
+		}})
+	waitFor(t, "the adoption", func() bool {
+		m.Scan()
+		return stateOf(m, "already").Adopted
+	})
+
+	m.RestartPicked()
+	waitFor(t, "a supervised process", func() bool {
+		got := stateOf(m, "already")
+		return got.State == supervisor.Running && !got.Adopted && got.Pid != was
+	})
+
+	// And now its output can be read, which is the whole point of taking it
+	// over. The regions are published as the pane is drawn, so it is painted
+	// before it is clicked.
+	paint(t, m, 70, 10)
+	m.Mouse(clickAt(6, 2))
+	waitFor(t, "the output", func() bool {
+		return strings.Contains(paint(t, m, 70, 10).text(), "HELLO-FROM-THE-SERVICE")
+	})
+}
+
+// outsideService starts a process the way a person would from another
+// terminal, and collects it when it ends so no zombie is left behind.
+func outsideService(t *testing.T, dir, script string) *os.Process {
+	t.Helper()
+	cmd := exec.Command("sh", "-c", script)
+	cmd.Dir = dir
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	done := make(chan struct{})
+	go func() { _, _ = cmd.Process.Wait(); close(done) }()
+	t.Cleanup(func() {
+		_ = cmd.Process.Kill()
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+		}
+	})
+	return cmd.Process
+}
+
+func countProcs(t *testing.T, dir string) int {
+	t.Helper()
+	found, err := procs.Find(dir, []string{"sh", "-c", "sleep 300"})
+	if err != nil {
+		t.Fatalf("Find: %v", err)
+	}
+	return len(found)
 }
