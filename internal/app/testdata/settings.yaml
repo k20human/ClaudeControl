@@ -1,0 +1,6 @@
+# a hand-written note that must survive
+layout:
+  module: hologram
+  options:
+    style: sphere
+    speed: 0.18

@@ -106,6 +106,10 @@ func TestSavingRecordsTheCurrentLayout(t *testing.T) {
 			{Kind: layout.KindLeaf, PaneID: 1},
 		},
 	}
+	// Rearranging is what puts saving on the wide path; every operation that
+	// changes the tree sets this, so the test states it rather than relying on
+	// a side effect it did not trigger.
+	a.layoutChanged = true
 	a.toggleSettingsPanel()
 	if err := a.saveSettings(); err != nil {
 		t.Fatalf("saveSettings: %v", err)
@@ -130,5 +134,38 @@ func TestAPaneWithNothingToConfigureSaysSo(t *testing.T) {
 	}
 	if !strings.Contains(a.status, "nothing to configure") {
 		t.Errorf("status = %q, want it to explain why", a.status)
+	}
+}
+
+// Saving a slider on an untouched layout must keep even the comments written
+// inside the layout block — the ones the wide path cannot preserve.
+func TestSavingASettingKeepsCommentsInsideTheLayout(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "config.yaml")
+	body := "layout:\n  # this pane is the one I watch\n  module: hologram\n  options:\n    style: sphere\n    speed: 0.18   # by eye\n"
+	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a := settingsApp(t, p)
+	a.toggleSettingsPanel()
+	for _, s := range a.settingsPanel.Items() {
+		if s.Key == "speed" {
+			if err := s.Apply(0.31); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := a.saveSettings(); err != nil {
+		t.Fatalf("saveSettings: %v", err)
+	}
+
+	got, _ := os.ReadFile(p)
+	out := string(got)
+	for _, comment := range []string{"# this pane is the one I watch", "# by eye"} {
+		if !strings.Contains(out, comment) {
+			t.Errorf("comment %q was lost on the narrow path:\n%s", comment, out)
+		}
+	}
+	if !strings.Contains(out, "0.31") {
+		t.Errorf("the new value is missing:\n%s", out)
 	}
 }

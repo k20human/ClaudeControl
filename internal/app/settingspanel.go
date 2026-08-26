@@ -120,19 +120,54 @@ func (a *App) moduleName(id layout.PaneID) string {
 	return "term"
 }
 
-// saveSettings writes the layout, options included.
+// saveSettings writes what changed.
 //
-// The layout carries each pane's options through Values(), so one write covers
-// both what you arranged and what you tuned.
+// Two paths, and the narrow one matters. Replacing the layout block loses the
+// comments written inside it — a note next to a pane that has been rearranged
+// has nowhere to go. So when the arrangement has not changed, only the focused
+// pane's options are written, and every comment in the file survives. The wide
+// path is taken only once the layout really did change, and then it says so.
 func (a *App) saveSettings() error {
 	if a.cfgPath == "" {
 		a.status = "no configuration file to write to"
 		return nil
 	}
+
+	if !a.layoutChanged {
+		values := map[string]any{}
+		if m, ok := a.modules[a.focus]; ok {
+			if v, ok := m.(interface{ Values() map[string]any }); ok {
+				values = v.Values()
+			}
+		}
+		if len(values) == 0 {
+			a.status = "nothing to save"
+			return nil
+		}
+		if err := stg.WritePaneOptions(a.cfgPath, a.paneOrdinal(a.focus), values); err != nil {
+			a.status = err.Error()
+			return err
+		}
+		a.status = "settings saved to " + a.cfgPath
+		return nil
+	}
+
 	if err := stg.ReplaceLayout(a.cfgPath, a.layoutSpec()); err != nil {
 		a.status = err.Error()
 		return err
 	}
-	a.status = "saved to " + a.cfgPath
+	a.layoutChanged = false
+	a.status = "layout and settings saved — comments inside the layout block were replaced"
 	return nil
+}
+
+// paneOrdinal is a pane's position in document order, which is how the
+// configuration addresses it.
+func (a *App) paneOrdinal(id layout.PaneID) int {
+	for i, leaf := range layout.Leaves(a.root) {
+		if leaf == id {
+			return i
+		}
+	}
+	return 0
 }

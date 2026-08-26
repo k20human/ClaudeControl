@@ -74,6 +74,11 @@ type App struct {
 	moduleNames map[layout.PaneID]string
 	status      string
 
+	// layoutChanged records whether the arrangement differs from the file.
+	// Saving takes the narrow path while it is false, which is what keeps the
+	// comments inside the layout block.
+	layoutChanged bool
+
 	// barCountX and barCountW are the slot between the status-bar buttons and
 	// quit. The slot is settled during layout so nothing can grow into a
 	// button; what it holds is decided when the bar is drawn.

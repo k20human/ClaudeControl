@@ -218,5 +218,6 @@ func (a *App) continueDrag(ev uv.MouseEvent, m uv.Mouse) {
 	next[d.index] += delta
 	next[d.index+1] -= delta
 	copy(d.parent.Ratios, next)
+	a.layoutChanged = true
 	a.relayout()
 }
