@@ -4,6 +4,7 @@ package hologram
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
@@ -11,6 +12,7 @@ import (
 	"claudecontrol/internal/holo"
 	"claudecontrol/internal/module"
 	"claudecontrol/internal/pool"
+	"claudecontrol/internal/transcript"
 )
 
 func init() { module.Register("hologram", New) }
@@ -34,14 +36,20 @@ type Renderer interface {
 
 // Module is the pane.
 type Module struct {
-	ctx      module.Context
+	ctx   module.Context
+	style string
+
+	// mu guards the renderer and the signal. Both are reached from the
+	// subscriptions as well as from the draw loop, and a renderer is a pile of
+	// floating-point state that must not be written mid-frame.
+	mu       sync.Mutex
 	renderer Renderer
-	style    string
 	params   holo.Params
 	sig      Signal
-	cols     int
-	rows     int
-	last     time.Time
+
+	cols int
+	rows int
+	last time.Time
 }
 
 // New builds the module. Recognised keys: "style" (sphere, ring or avatar),
@@ -92,18 +100,64 @@ func (m *Module) Init(ctx module.Context) error {
 	if ctx.Bus == nil {
 		return nil
 	}
-	ch := ctx.Bus.SubscribeState(pool.StateTopic)
+	states := ctx.Bus.SubscribeState(pool.StateTopic)
 	go func() {
-		for v := range ch {
+		for v := range states {
 			entries, ok := v.([]*pool.Entry)
 			if !ok {
 				continue
 			}
-			m.sig = signalFrom(entries)
+			m.mu.Lock()
+			sig := signalFrom(entries)
+			// The token counts belong to the turns, not to the pool: keep
+			// whatever the last turn reported rather than blanking it every
+			// time a session changes state.
+			sig.Context, sig.Thinking = m.sig.Context, m.sig.Thinking
+			m.sig = sig
+			m.renderer.SetSignal(sig)
+			m.mu.Unlock()
+			m.wake()
+		}
+	}()
+
+	// Turns are what a spark marks. Nothing emits one on a timer, so the panel
+	// is quiet exactly when the sessions are.
+	turns := ctx.Bus.SubscribeState(transcript.SessionTopic)
+	go func() {
+		for v := range turns {
+			sm, ok := v.(transcript.SessionMetrics)
+			if !ok {
+				continue
+			}
+			m.mu.Lock()
+			m.sig.Context, m.sig.Thinking = sm.Metrics.Context, sm.Metrics.Thinking
 			m.renderer.SetSignal(m.sig)
+			if e, ok := m.renderer.(interface{ Emit(int) }); ok {
+				e.Emit(sparksFor(sm.Metrics))
+			}
+			m.mu.Unlock()
+			m.wake()
 		}
 	}()
 	return nil
+}
+
+// sparksFor is how many traces a turn is worth. A turn always shows at least
+// one, and a turn that thought hard shows more — but the count is capped well
+// under what the sphere can hold, so a long reasoning burst reads as busy
+// rather than as a flash.
+func sparksFor(met transcript.Metrics) int {
+	n := 1 + met.Thinking/400
+	if n > 6 {
+		n = 6
+	}
+	return n
+}
+
+func (m *Module) wake() {
+	if m.ctx.Wake != nil {
+		m.ctx.Wake()
+	}
 }
 
 // signalFrom reduces the pool to what the hologram reacts to.
@@ -143,6 +197,8 @@ func (m *Module) Title() (string, bool) { return "", false }
 
 // Resize passes the new size on.
 func (m *Module) Resize(w, h int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.cols, m.rows = w, h
 	m.renderer.Resize(w, h)
 	return nil
@@ -150,7 +206,11 @@ func (m *Module) Resize(w, h int) error {
 
 // Step advances the animation. Exposed so tests can drive it deterministically
 // rather than sleeping.
-func (m *Module) Step(dt float64) { m.renderer.Step(dt) }
+func (m *Module) Step(dt float64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.renderer.Step(dt)
+}
 
 // Draw advances by however long has passed and paints.
 func (m *Module) Draw(scr uv.Screen, area uv.Rectangle) {
@@ -162,13 +222,13 @@ func (m *Module) Draw(scr uv.Screen, area uv.Rectangle) {
 	if dt > 0.2 {
 		dt = 0.2
 	}
+	m.mu.Lock()
 	if dt > 0 {
 		m.renderer.Step(dt)
 	}
 	m.renderer.Draw(scr, area)
-	if m.ctx.Wake != nil {
-		m.ctx.Wake()
-	}
+	m.mu.Unlock()
+	m.wake()
 }
 
 // Close releases nothing: the module owns no process.

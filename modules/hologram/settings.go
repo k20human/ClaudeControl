@@ -66,6 +66,12 @@ func (m *Module) Settings() []settings.Setting {
 // from the module's own copy when it does not. The copy is what lets the ring
 // and the avatar be visited without losing the sphere's settings.
 func (m *Module) tuning() holo.Params {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.tuningLocked()
+}
+
+func (m *Module) tuningLocked() holo.Params {
 	if t, ok := m.renderer.(tunable); ok {
 		return t.Params()
 	}
@@ -75,6 +81,8 @@ func (m *Module) tuning() holo.Params {
 // setTuning records the parameters and hands them to the renderer if it can
 // use them.
 func (m *Module) setTuning(p holo.Params) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.params = p
 	if t, ok := m.renderer.(tunable); ok {
 		t.SetParams(p)
@@ -97,10 +105,12 @@ func (m *Module) Values() map[string]any {
 // setStyle swaps the renderer, carrying the tuning across so that looking at
 // the ring and coming back does not reset the sphere.
 func (m *Module) setStyle(style string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if style == m.style {
 		return nil
 	}
-	params := m.tuning()
+	params := m.tuningLocked()
 	var r Renderer
 	switch style {
 	case "sphere":

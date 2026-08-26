@@ -289,3 +289,38 @@ func total(dots []float32) float64 {
 	}
 	return sum
 }
+
+// Easing a parameter frame by frame must not put the particles back where they
+// started. Only a change of population — the seed or the density — rebuilds
+// them.
+func TestChangingSpeedDoesNotRestartTheAnimation(t *testing.T) {
+	p := holo.DefaultParams()
+	s := holo.NewSphere(p)
+	s.Resize(50, 50)
+	for i := 0; i < 60; i++ {
+		s.Step(1.0 / 30)
+	}
+	before := append([]float32(nil), s.Dots()...)
+
+	faster := p
+	faster.Speed = p.Speed * 1.2
+	s.SetParams(faster)
+	s.Step(0)
+	var moved float64
+	for i, v := range s.Dots() {
+		moved += math.Abs(float64(v - before[i]))
+	}
+	// Stepping by no time at all after a speed change: the deposit decays by
+	// the trail and nothing else. A reseed would have scattered it entirely.
+	if moved > total(before)*0.5 {
+		t.Errorf("a speed change moved %.1f of %.1f; the particles were rebuilt",
+			moved, total(before))
+	}
+
+	denser := faster
+	denser.Density = p.Density * 2
+	s.SetParams(denser)
+	if s.Count() <= 0 {
+		t.Fatal("a density change left no particles")
+	}
+}

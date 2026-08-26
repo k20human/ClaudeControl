@@ -129,13 +129,22 @@ func (s *Sphere) Emit(n int) {
 func (s *Sphere) Sparks() int { return len(s.sparks) }
 
 // SetParams replaces the parameters. A changed seed rebuilds the flow.
+//
+// The particles are rebuilt only when the seed or the density changes, because
+// rebuilding them puts every one back on the lattice it started from. That is
+// right when the population itself changes and wrong for anything else: a
+// caller easing the speed frame by frame would otherwise reset the animation
+// sixty times a second.
 func (s *Sphere) SetParams(p Params) {
+	rebuild := p.Seed != s.p.Seed || p.Density != s.p.Density
 	if p.Seed != s.p.Seed {
 		s.field = NewField(p.Seed, 7)
 		s.fine = NewField(p.Seed+9973, 17)
 	}
 	s.p = p
-	s.reseed()
+	if rebuild {
+		s.reseed()
+	}
 }
 
 // Resize sets the dot grid and reseeds the particles to match its area.
