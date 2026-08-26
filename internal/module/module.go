@@ -8,6 +8,7 @@ import (
 	"claudecontrol/internal/bus"
 	"claudecontrol/internal/layout"
 	"claudecontrol/internal/pool"
+	"claudecontrol/internal/settings"
 )
 
 // Context carries what a module needs from the application.
@@ -46,6 +47,13 @@ type Module interface {
 // the real terminal cursor from the focused module only.
 type Cursorer interface {
 	Cursor() (x, y int, visible bool)
+}
+
+// Provider is implemented by modules that let you change something. The menu
+// is built from what they publish, so a module gains an editable setting by
+// describing it rather than by drawing a widget.
+type Provider interface {
+	Settings() []settings.Setting
 }
 
 // Inputter is implemented by modules that accept input. Coordinates in mouse

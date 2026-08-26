@@ -36,6 +36,11 @@ type Renderer interface {
 type Module struct {
 	ctx      module.Context
 	renderer Renderer
+	style    string
+	params   holo.Params
+	sig      Signal
+	cols     int
+	rows     int
 	last     time.Time
 }
 
@@ -46,18 +51,19 @@ func New(cfg map[string]any) (module.Module, error) {
 	if style == "" {
 		style = "sphere"
 	}
-	var r Renderer
+	params := paramsFrom(cfg)
+	m := &Module{style: style, params: params}
 	switch style {
 	case "sphere":
-		r = newSphere(paramsFrom(cfg))
+		m.renderer = newSphere(params)
 	case "ring":
-		r = newRing()
+		m.renderer = newRing()
 	case "avatar":
-		r = newAvatar()
+		m.renderer = newAvatar()
 	default:
 		return nil, fmt.Errorf("hologram: unknown style %q (want sphere, ring or avatar)", style)
 	}
-	return &Module{renderer: r}, nil
+	return m, nil
 }
 
 // paramsFrom overlays configured values on the ones validated by eye.
@@ -93,7 +99,8 @@ func (m *Module) Init(ctx module.Context) error {
 			if !ok {
 				continue
 			}
-			m.renderer.SetSignal(signalFrom(entries))
+			m.sig = signalFrom(entries)
+			m.renderer.SetSignal(m.sig)
 		}
 	}()
 	return nil
@@ -132,6 +139,7 @@ func rank(s pool.State) int {
 
 // Resize passes the new size on.
 func (m *Module) Resize(w, h int) error {
+	m.cols, m.rows = w, h
 	m.renderer.Resize(w, h)
 	return nil
 }
