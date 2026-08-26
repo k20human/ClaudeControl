@@ -468,3 +468,34 @@ func TestNarrowStatusBarDropsTheLeastImportantButtons(t *testing.T) {
 			ansi.StringWidth(bar), W, bar)
 	}
 }
+
+// The session list is the answer to "is Claude waiting for me anywhere?", so
+// it must open, show what the pool holds, and close again without disturbing
+// the panes behind it.
+func TestSessionPanelOpensFromTheStatusBar(t *testing.T) {
+	const W, H = 90, 24
+	s, snap := run(t, "testdata/one-pane.yaml", W, H)
+	waitForRow(t, snap, 0, "P>")
+
+	bar := waitForRow(t, snap, H-1, "list").row(H - 1)
+	click(t, s, columnOf(bar, "list"), H-1)
+	waitForAnywhere(t, snap, "SESSIONS")
+	waitForAnywhere(t, snap, "enter attach")
+
+	// The hosted command is in the pool, so the list must show it rather than
+	// claiming there is nothing.
+	if anywhere(snap(), "no sessions") {
+		t.Error("the list is empty while a session is hosted")
+	}
+
+	s.SendText("\x1b") // escape
+	time.Sleep(400 * time.Millisecond)
+	if anywhere(snap(), "enter attach") {
+		t.Fatal("escape left the session list open")
+	}
+
+	// The pane is still there, and still the pane.
+	waitForRow(t, snap, 0, "P>")
+	s.SendText("A")
+	waitForRow(t, snap, 0, "P>A")
+}
