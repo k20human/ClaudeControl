@@ -98,6 +98,20 @@ func (a *App) handleMouse(ev uv.MouseEvent, m uv.Mouse) {
 		return
 	}
 
+	if a.palette != nil {
+		if _, isClick := ev.(uv.MouseClickEvent); isClick {
+			r := a.palettePanelRect()
+			if row := m.Y - r.Y - 3; row >= 0 && row < len(a.paletteVisible()) &&
+				m.X >= r.X && m.X < r.X+r.W {
+				a.palette.selected = row
+				a.paletteChoose()
+				return
+			}
+			a.togglePalette()
+		}
+		return
+	}
+
 	// The menu takes the pointer while it is open. Its own rectangle handles
 	// the click; the status bar stays reachable; anything else closes it.
 	if a.settingsPanel != nil {

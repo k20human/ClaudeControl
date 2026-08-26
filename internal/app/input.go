@@ -21,11 +21,13 @@ type binding struct {
 }
 
 var bindings = []binding{
-	{[]string{"alt+h", "alt+j", "alt+k", "alt+l"}, "alt+h j k l", "move focus", nil},
-	{[]string{"alt+h"}, "", "", func(a *App) { a.focusDirection(Left) }},
-	{[]string{"alt+l"}, "", "", func(a *App) { a.focusDirection(Right) }},
-	{[]string{"alt+k"}, "", "", func(a *App) { a.focusDirection(Up) }},
-	{[]string{"alt+j"}, "", "", func(a *App) { a.focusDirection(Down) }},
+	// Each direction carries its own description rather than sharing one
+	// display-only line. The palette can only offer an entry that does
+	// something, so a combined row would leave moving focus unreachable there.
+	{[]string{"alt+h"}, "alt+h", "move focus left", func(a *App) { a.focusDirection(Left) }},
+	{[]string{"alt+j"}, "alt+j", "move focus down", func(a *App) { a.focusDirection(Down) }},
+	{[]string{"alt+k"}, "alt+k", "move focus up", func(a *App) { a.focusDirection(Up) }},
+	{[]string{"alt+l"}, "alt+l", "move focus right", func(a *App) { a.focusDirection(Right) }},
 	{[]string{"alt+`"}, "alt+`", "previous pane", func(a *App) { a.setFocus(a.prev) }},
 	{[]string{"alt+n"}, "alt+n", "new session", func(a *App) { _ = a.newPane(layout.Horizontal) }},
 	{[]string{"alt+x"}, "alt+x", "close pane", func(a *App) { _ = a.closePane(a.focus) }},
@@ -34,11 +36,34 @@ var bindings = []binding{
 	{[]string{"alt+s"}, "alt+s", "reset every split to equal shares", func(a *App) { a.evenOutSplits() }},
 	{[]string{"alt+space"}, "alt+space", "sessions", func(a *App) { a.toggleSessionPanel() }},
 	{[]string{"alt+,"}, "alt+,", "settings", func(a *App) { a.toggleSettingsPanel() }},
+	{[]string{"alt+/"}, "alt+/", "command palette", func(a *App) { a.togglePalette() }},
 	{[]string{"alt+g"}, "alt+g", "this panel", func(a *App) { a.overlay = overlayHelp }},
 	{[]string{"alt+q"}, "alt+q", "quit", func(a *App) { a.overlay = overlayQuit }},
 }
 
 func (a *App) handleKey(e uv.KeyPressEvent) {
+	// The palette takes every keystroke: it is a text field, so a plain letter
+	// has to reach the query rather than an action. Only escape and its own
+	// binding close it.
+	if a.palette != nil {
+		key := e.Key()
+		switch {
+		case e.MatchString("esc", "alt+/"):
+			a.togglePalette()
+		case key.Code == uv.KeyEnter:
+			a.paletteChoose()
+		case key.Code == uv.KeyBackspace:
+			a.paletteBackspace()
+		case key.Code == uv.KeyUp:
+			a.paletteMove(-1)
+		case key.Code == uv.KeyDown:
+			a.paletteMove(1)
+		case key.Text != "":
+			a.paletteType(key.Text)
+		}
+		return
+	}
+
 	// The menu takes the keyboard while it is open. Plain arrows adjust,
 	// because a modifier on every nudge would make tuning a slider a chore.
 	if a.settingsPanel != nil {

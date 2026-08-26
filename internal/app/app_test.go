@@ -265,12 +265,14 @@ func TestClickFocusesAPaneWithoutReachingItsGuest(t *testing.T) {
 // The status bar is the mouse-only path to everything the keyboard can do, so
 // its labels are part of the contract.
 func TestStatusBarOffersTheExpectedButtons(t *testing.T) {
-	const W, H = 100, 14
+	// Wide enough for every button. A narrower bar drops from the end on
+	// purpose, which TestNarrowStatusBarDropsTheLeastImportantButtons covers.
+	const W, H = 112, 14
 	_, snap := run(t, "testdata/two-echo.yaml", W, H)
 	waitForRow(t, snap, 0, "L>")
 
 	bar := waitForRow(t, snap, H-1, "quit").row(H - 1)
-	for _, label := range []string{"new", "close", "list", "help", "zoom", "flip", "equal", "quit"} {
+	for _, label := range []string{"new", "close", "list", "help", "set", "cmd", "zoom", "flip", "equal", "quit"} {
 		if !strings.Contains(bar, label) {
 			t.Errorf("status bar = %q, missing %q", bar, label)
 		}
@@ -647,4 +649,51 @@ func TestSettingsMenuAdjustsAndSaves(t *testing.T) {
 	if strings.Contains(out, "speed: 0.18") {
 		t.Errorf("the slider did not change anything:\n%s", out)
 	}
+}
+
+// The control centre in one screen: a live session, service verdicts, and a
+// task listed in a pane of its own.
+func TestServicesAndTasksAppearBesideASession(t *testing.T) {
+	const W, H = 100, 24
+	_, snap := run(t, "testdata/control-centre.yaml", W, H)
+	waitForRow(t, snap, 0, "P>")
+
+	// Both verdicts, so a failing check is visibly different from a passing one.
+	waitForAnywhere(t, snap, "always-up")
+	waitForAnywhere(t, snap, "always-down")
+	waitForAnywhere(t, snap, "up")
+	waitForAnywhere(t, snap, "down")
+
+	// The task is listed before it is run.
+	waitForAnywhere(t, snap, "greet")
+}
+
+// The palette has to reach an action by name, which is the point of having one.
+func TestThePaletteRunsAnActionByName(t *testing.T) {
+	const W, H = 100, 24
+	s, snap := run(t, "testdata/control-centre.yaml", W, H)
+	waitForRow(t, snap, 0, "P>")
+	waitForAnywhere(t, snap, "always-up")
+
+	bar := waitForRow(t, snap, H-1, "cmd").row(H - 1)
+	click(t, s, columnOf(bar, "cmd"), H-1)
+	waitForAnywhere(t, snap, "›")
+
+	// Type enough to single out zoom, then take it.
+	for _, ch := range []string{"z", "o", "o", "m"} {
+		s.SendText(ch)
+		time.Sleep(80 * time.Millisecond)
+	}
+	waitForAnywhere(t, snap, "zoom / restore")
+	s.SendText("\r")
+
+	// Zoomed, the focused session fills the screen, so the services pane goes.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if !anywhere(snap(), "always-up") {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatal("choosing zoom from the palette did nothing")
 }

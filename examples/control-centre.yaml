@@ -1,0 +1,32 @@
+# The whole thing: a session, the hologram, service checks and tasks.
+# Run with: ./bin/claudecontrol -config examples/control-centre.yaml
+layout:
+  split: horizontal
+  ratios: [3, 2]
+  children:
+    - module: claude
+      options:
+        dir: ~/GolandProjects/ClaudeControl
+    - split: vertical
+      ratios: [2, 1, 1]
+      children:
+        - module: hologram
+          options: { style: sphere }
+        - module: services
+          options:
+            interval: 5
+            checks:
+              # Replace these with the things you actually watch.
+              - name: network
+                cmd: [sh, -c, "ip route | grep -q default"]
+              - name: docker
+                cmd: [sh, -c, "test -S /var/run/docker.sock"]
+        - module: tasks
+          options:
+            tasks:
+              - name: test
+                cmd: [go, test, ./...]
+                dir: ~/GolandProjects/ClaudeControl
+              - name: build
+                cmd: [go, build, ./...]
+                dir: ~/GolandProjects/ClaudeControl
