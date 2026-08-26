@@ -11,6 +11,7 @@ import (
 	"claudecontrol/internal/hooks"
 
 	// Register the built-in module types.
+	_ "claudecontrol/modules/claude"
 	_ "claudecontrol/modules/term"
 )
 

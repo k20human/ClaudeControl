@@ -17,7 +17,7 @@ func (a *App) newPane(o layout.Orientation) error {
 	a.nextPane++
 	id := a.nextPane
 
-	m, err := module.New("term", map[string]any{"cmd": []any{"claude"}})
+	m, err := module.New("claude", nil)
 	if err != nil {
 		return err
 	}
