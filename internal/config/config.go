@@ -51,10 +51,7 @@ func Path() string {
 // Default is the layout used when no configuration file exists: a single pane
 // running Claude Code in the current directory.
 func Default() *Config {
-	return &Config{Layout: &NodeSpec{
-		Module:  "term",
-		Options: map[string]any{"cmd": []any{"claude"}},
-	}}
+	return &Config{Layout: &NodeSpec{Module: "claude"}}
 }
 
 // Load reads the file. A missing file yields Default and no error — a first

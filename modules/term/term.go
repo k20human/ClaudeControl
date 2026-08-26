@@ -5,6 +5,7 @@ package term
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"sync/atomic"
 
@@ -93,12 +94,25 @@ func (m *Module) Resize(w, h int) error {
 			return err
 		}
 		m.sess = s
-		if m.ctx.Sessions != nil {
-			m.ctx.Sessions.Add(s)
+		if m.ctx.Pool != nil {
+			m.ctx.Pool.Add(s, m.title(), m.dir)
+			// Marking it attached is not decoration: the list distinguishes a
+			// session on screen from one running in the background, and a pane
+			// that adds without attaching makes the list say the opposite of
+			// what is true.
+			m.ctx.Pool.SetAttached(s.ID, true)
 		}
 		return nil
 	}
 	return m.sess.Resize(w, h)
+}
+
+// title is what the sessions list shows. The pane number is part of it because
+// several panes commonly run the same command in the same directory, and rows
+// nobody can tell apart are rows nobody can act on.
+func (m *Module) title() string {
+	name := filepath.Base(m.argv[0])
+	return name + " " + strconv.FormatUint(uint64(m.ctx.PaneID), 10)
 }
 
 // Draw paints the emulated screen into area.
@@ -162,13 +176,17 @@ func (m *Module) Paste(text string) {
 // Session exposes the hosted session so the application can read its status.
 func (m *Module) Session() *session.Session { return m.sess }
 
-// Close stops the process and drops it from the registry.
+// Close ends the process.
+//
+// A term pane owns what it hosts: a shell has no conversation worth keeping,
+// so closing the pane closes the command. The claude module does the opposite
+// and merely detaches, because a Claude session does have something to keep.
 func (m *Module) Close() error {
 	if m.sess == nil {
 		return nil
 	}
-	if m.ctx.Sessions != nil {
-		m.ctx.Sessions.Remove(m.sess.ID)
+	if m.ctx.Pool != nil {
+		return m.ctx.Pool.Kill(m.sess.ID)
 	}
 	return m.sess.Close()
 }

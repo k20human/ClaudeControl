@@ -5,10 +5,22 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 
+	"claudecontrol/internal/bus"
 	"claudecontrol/internal/layout"
 	"claudecontrol/internal/module"
-	"claudecontrol/internal/session"
+	"claudecontrol/internal/pool"
 )
+
+// isolateState points the snapshot at a directory of its own. Laying panes out
+// records them, and a unit test must not write into the state of the person
+// running it.
+func isolateState(t *testing.T) {
+	t.Helper()
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+}
+
+// testBus backs the pool the lifecycle fixtures use.
+var testBus = bus.New()
 
 // stub is a module that draws nothing, so lifecycle can be tested without a
 // terminal or a process.
@@ -19,11 +31,13 @@ func (s *stub) Resize(int, int) error        { return nil }
 func (s *stub) Draw(uv.Screen, uv.Rectangle) {}
 func (s *stub) Close() error                 { s.closed = true; return nil }
 
-func newTestApp() *App {
+func newTestApp(t *testing.T) *App {
+	isolateState(t)
 	return &App{
 		root:     &layout.Node{Kind: layout.KindLeaf, PaneID: 1},
 		modules:  map[layout.PaneID]module.Module{1: &stub{}},
-		sessions: session.NewRegistry(),
+		bus:      testBus,
+		pool:     pool.New(testBus),
 		rects:    map[layout.PaneID]layout.Rect{1: {X: 0, Y: 0, W: 80, H: 24}},
 		area:     layout.Rect{X: 0, Y: 0, W: 80, H: 24},
 		focus:    1,
@@ -35,7 +49,7 @@ func newTestApp() *App {
 }
 
 func TestClosePaneRemovesTheLeafAndClosesTheModule(t *testing.T) {
-	a := newTestApp()
+	a := newTestApp(t)
 	a.root, _ = layout.Split(a.root, 1, &layout.Node{Kind: layout.KindLeaf, PaneID: 2}, layout.Horizontal)
 	m2 := &stub{}
 	a.modules[2] = m2
@@ -60,7 +74,7 @@ func TestClosePaneRemovesTheLeafAndClosesTheModule(t *testing.T) {
 }
 
 func TestClosingTheLastPaneQuits(t *testing.T) {
-	a := newTestApp()
+	a := newTestApp(t)
 	if err := a.closePane(1); err != nil {
 		t.Fatalf("closePane: %v", err)
 	}
@@ -70,7 +84,7 @@ func TestClosingTheLastPaneQuits(t *testing.T) {
 }
 
 func TestToggleZoomIsReversible(t *testing.T) {
-	a := newTestApp()
+	a := newTestApp(t)
 	a.root, _ = layout.Split(a.root, 1, &layout.Node{Kind: layout.KindLeaf, PaneID: 2}, layout.Horizontal)
 	a.modules[2] = &stub{}
 	a.nextPane = 2
@@ -95,7 +109,7 @@ func TestToggleZoomIsReversible(t *testing.T) {
 }
 
 func TestClosingAZoomedPaneLeavesZoom(t *testing.T) {
-	a := newTestApp()
+	a := newTestApp(t)
 	a.root, _ = layout.Split(a.root, 1, &layout.Node{Kind: layout.KindLeaf, PaneID: 2}, layout.Horizontal)
 	a.modules[2] = &stub{}
 	a.nextPane = 2

@@ -3,13 +3,17 @@ package app
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
 
+	"claudecontrol/internal/bus"
 	"claudecontrol/internal/config"
+	"claudecontrol/internal/hooks"
 	"claudecontrol/internal/layout"
 	"claudecontrol/internal/module"
+	"claudecontrol/internal/pool"
 	"claudecontrol/internal/session"
 )
 
@@ -22,9 +26,15 @@ type App struct {
 	term *uv.Terminal
 	scr  *uv.TerminalScreen
 
-	root     *layout.Node
-	modules  map[layout.PaneID]module.Module
-	sessions *session.Registry
+	root    *layout.Node
+	modules map[layout.PaneID]module.Module
+
+	bus   *bus.Bus
+	pool  *pool.Pool
+	hooks *hooks.Listener
+
+	// binary is our own executable, which sessions invoke in --hook mode.
+	binary string
 
 	focus  layout.PaneID
 	prev   layout.PaneID
@@ -48,6 +58,13 @@ type App struct {
 	overlay      overlayKind
 	buttons      []button
 	panelButtons []button
+	sessionPanel selector
+
+	// barCountX and barCountW are the slot between the status-bar buttons and
+	// quit. The slot is settled during layout so nothing can grow into a
+	// button; what it holds is decided when the bar is drawn.
+	barCountX int
+	barCountW int
 
 	// pointerX and pointerY are the last reported pointer position, so a panel
 	// button can light up under it the way a status-bar button does.
@@ -71,10 +88,12 @@ func New(cfgPath string) (*App, error) {
 		return nil, err
 	}
 
+	b := bus.New()
 	a := &App{
 		root:     root,
 		modules:  make(map[layout.PaneID]module.Module),
-		sessions: session.NewRegistry(),
+		bus:      b,
+		pool:     pool.New(b),
 		rects:    make(map[layout.PaneID]layout.Rect),
 		hoverDiv: -1,
 		hoverBtn: -1,
@@ -83,15 +102,29 @@ func New(cfgPath string) (*App, error) {
 		wake:     make(chan struct{}, 1),
 	}
 
+	// The socket has to exist before any session starts, since a session is
+	// told where to send its hooks at launch. A failure here is not fatal: the
+	// multiplexer works without state reporting, it simply reports no state.
+	a.binary, err = os.Executable()
+	if err != nil {
+		a.binary = "claudecontrol"
+	}
+	runtimeDir := os.Getenv("XDG_RUNTIME_DIR")
+	if runtimeDir == "" {
+		runtimeDir = os.TempDir()
+	}
+	if l, lerr := hooks.Listen(runtimeDir); lerr == nil {
+		a.hooks = l
+		go a.pumpHooks()
+	}
+
 	for _, id := range layout.Leaves(root) {
 		spec := panes[id]
 		m, err := module.New(spec.Module, spec.Options)
 		if err != nil {
 			return nil, fmt.Errorf("pane %d: %w", id, err)
 		}
-		if err := m.Init(module.Context{
-			PaneID: id, Sessions: a.sessions, Wake: a.Wake,
-		}); err != nil {
+		if err := m.Init(a.moduleContext(id)); err != nil {
 			return nil, fmt.Errorf("pane %d: init: %w", id, err)
 		}
 		a.modules[id] = m
@@ -104,6 +137,34 @@ func New(cfgPath string) (*App, error) {
 		a.prev = ids[0]
 	}
 	return a, nil
+}
+
+// moduleContext is what every module is handed at Init.
+func (a *App) moduleContext(id layout.PaneID) module.Context {
+	socket := ""
+	if a.hooks != nil {
+		socket = a.hooks.Path()
+	}
+	return module.Context{
+		PaneID:     id,
+		Pool:       a.pool,
+		Bus:        a.bus,
+		HookSocket: socket,
+		Binary:     a.binary,
+		Wake:       a.Wake,
+	}
+}
+
+// pumpHooks turns hook payloads into session states.
+func (a *App) pumpHooks() {
+	for p := range a.hooks.Events() {
+		st, ok := pool.StateForHook(p.Event)
+		if !ok {
+			continue
+		}
+		a.pool.SetState(session.ID(p.SessionID), st)
+		a.Wake()
+	}
 }
 
 // Wake asks for a repaint. It never blocks: a full channel already means a
@@ -133,7 +194,11 @@ func (a *App) Run() error {
 		return fmt.Errorf("app: start terminal: %w", err)
 	}
 	defer func() {
-		_ = a.sessions.CloseAll()
+		if a.hooks != nil {
+			_ = a.hooks.Close()
+		}
+		_ = a.pool.CloseAll()
+		a.bus.Close()
 		a.scr.ExitAltScreen()
 		a.scr.ShowCursor()
 		a.scr.SetMouseMode(uv.MouseModeNone)
@@ -224,6 +289,7 @@ func (a *App) relayout() {
 		}
 		_ = m.Resize(r.W, r.H)
 	}
+	a.saveSnapshot()
 }
 
 // draw paints every visible pane, then the chrome, then places the cursor.
@@ -255,10 +321,11 @@ func (a *App) draw() {
 	}
 	drawDividers(a.scr, a.rects, a.divs, a.focus, a.hoverDiv)
 	a.drawStatusBar(a.scr)
+	a.drawSessionPanel(a.scr)
 	a.drawOverlay(a.scr)
 
 	a.scr.HideCursor()
-	if a.overlay != overlayNone {
+	if a.overlay != overlayNone || a.sessionPanel != nil {
 		return
 	}
 	if m, ok := a.modules[a.focus]; ok {

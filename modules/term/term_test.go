@@ -8,8 +8,9 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 
+	"claudecontrol/internal/bus"
 	"claudecontrol/internal/module"
-	"claudecontrol/internal/session"
+	"claudecontrol/internal/pool"
 	_ "claudecontrol/modules/term"
 )
 
@@ -61,7 +62,7 @@ func (b *buffer) row(y int) string {
 }
 
 func TestTermModuleDrawsGuestOutputAtTheGivenOffset(t *testing.T) {
-	reg := session.NewRegistry()
+	p := pool.New(bus.New())
 	m, err := module.New("term", map[string]any{
 		"cmd": []any{"printf", "hi"},
 		"dir": t.TempDir(),
@@ -69,7 +70,7 @@ func TestTermModuleDrawsGuestOutputAtTheGivenOffset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("module.New: %v", err)
 	}
-	if err := m.Init(module.Context{PaneID: 1, Sessions: reg, Wake: func() {}}); err != nil {
+	if err := m.Init(module.Context{PaneID: 1, Pool: p, Wake: func() {}}); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
 	defer m.Close()
@@ -92,8 +93,8 @@ func TestTermModuleDrawsGuestOutputAtTheGivenOffset(t *testing.T) {
 	if !strings.HasPrefix(got, "     hi") {
 		t.Fatalf("row 2 = %q, want the guest output starting at column 5", got)
 	}
-	if len(reg.All()) != 1 {
-		t.Fatalf("registry holds %d sessions, want 1", len(reg.All()))
+	if len(p.All()) != 1 {
+		t.Fatalf("pool holds %d sessions, want 1", len(p.All()))
 	}
 }
 
@@ -108,7 +109,7 @@ func TestUnknownModuleNameIsAnError(t *testing.T) {
 // combinations, so routing printable text through it silently swallows every
 // capital letter. This pins the workaround down.
 func TestShiftedCharacterReachesTheGuest(t *testing.T) {
-	reg := session.NewRegistry()
+	p := pool.New(bus.New())
 	m, err := module.New("term", map[string]any{
 		"cmd": []any{"sh", "-c", "printf '>'; cat"},
 		"dir": t.TempDir(),
@@ -116,7 +117,7 @@ func TestShiftedCharacterReachesTheGuest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("module.New: %v", err)
 	}
-	if err := m.Init(module.Context{PaneID: 1, Sessions: reg, Wake: func() {}}); err != nil {
+	if err := m.Init(module.Context{PaneID: 1, Pool: p, Wake: func() {}}); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
 	defer m.Close()
@@ -153,4 +154,39 @@ func TestShiftedCharacterReachesTheGuest(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	t.Fatalf("row 0 = %q, want the capital A to have reached the guest", got)
+}
+
+// A pane that hosts a session must say so. The list distinguishes a session on
+// screen from one running in the background, and a module that adds to the
+// pool without marking itself attached makes the list report the opposite of
+// what is true.
+func TestHostingAPaneMarksTheSessionAttached(t *testing.T) {
+	p := pool.New(bus.New())
+	m, err := module.New("term", map[string]any{
+		"cmd": []any{"sleep", "30"},
+		"dir": t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("module.New: %v", err)
+	}
+	if err := m.Init(module.Context{PaneID: 7, Pool: p, Wake: func() {}}); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	defer m.Close()
+	if err := m.Resize(20, 5); err != nil {
+		t.Fatalf("Resize: %v", err)
+	}
+
+	all := p.All()
+	if len(all) != 1 {
+		t.Fatalf("pool holds %d sessions, want 1", len(all))
+	}
+	if !all[0].Attached {
+		t.Error("the session is in the pool but not marked attached")
+	}
+	// Two panes running the same command in the same directory must still be
+	// tellable apart in the list.
+	if all[0].Title != "sleep 7" {
+		t.Errorf("title = %q, want it to carry the pane number", all[0].Title)
+	}
 }

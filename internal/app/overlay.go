@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"claudecontrol/internal/layout"
+	"claudecontrol/internal/render"
 )
 
 // overlayKind is what, if anything, is shown on top of the panes.
@@ -57,7 +58,7 @@ func (a *App) drawOverlay(scr uv.Screen) {
 			{"[ close ]", false, func(a *App) { a.dismissOverlay(false) }},
 		})
 	case overlayQuit:
-		n := len(a.sessions.All())
+		n := len(a.pool.All())
 		what := fmt.Sprintf("Quit and end %d sessions?", n)
 		if n == 1 {
 			what = "Quit and end 1 session?"
@@ -148,8 +149,8 @@ func (a *App) drawPanel(scr uv.Screen, title string, rows [][2]string, footer st
 
 	x := avail.X + (avail.W-w)/2
 	y := avail.Y + (avail.H-h)/2
-	fill(scr, layout.Rect{X: x, Y: y, W: w, H: h}, panelBg)
-	writeText(scr, x+padX, y+1, title, accent, panelBg)
+	render.Fill(scr, uv.Rect(x, y, w, h), panelBg)
+	render.Text(scr, x+padX, y+1, title, accent, panelBg)
 
 	for i, r := range shown {
 		if r[0] == "" && r[1] == "" {
@@ -158,11 +159,11 @@ func (a *App) drawPanel(scr uv.Screen, title string, rows [][2]string, footer st
 		if r[0] == "" {
 			// A line with no key is a sentence, not a table row: it starts at
 			// the margin instead of hanging off an empty key column.
-			writeText(scr, x+padX, y+3+i, r[1], panelFg, panelBg)
+			render.Text(scr, x+padX, y+3+i, r[1], panelFg, panelBg)
 			continue
 		}
-		writeText(scr, x+padX, y+3+i, r[0], panelKey, panelBg)
-		writeText(scr, x+padX+keyW+2, y+3+i, r[1], panelFg, panelBg)
+		render.Text(scr, x+padX, y+3+i, r[0], panelKey, panelBg)
+		render.Text(scr, x+padX+keyW+2, y+3+i, r[1], panelFg, panelBg)
 	}
 
 	if len(actions) > 0 && h >= chrome {
@@ -182,7 +183,7 @@ func (a *App) drawPanel(scr uv.Screen, title string, rows [][2]string, footer st
 			if a.pointerY == by && a.pointerX >= bx && a.pointerX < bx+lw {
 				fg, bg = barHotFg, barHotBg
 			}
-			writeText(scr, bx, by, act.label, fg, bg)
+			render.Text(scr, bx, by, act.label, fg, bg)
 			a.panelButtons = append(a.panelButtons, button{
 				label: act.label, rect: r, run: act.run, warn: act.warn,
 			})
@@ -190,7 +191,7 @@ func (a *App) drawPanel(scr uv.Screen, title string, rows [][2]string, footer st
 		}
 	}
 	if h >= chrome {
-		writeText(scr, x+padX, y+h-2, footer, barCountFg, panelBg)
+		render.Text(scr, x+padX, y+h-2, footer, barCountFg, panelBg)
 	}
 }
 

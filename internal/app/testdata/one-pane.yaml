@@ -1,0 +1,3 @@
+layout:
+  module: term
+  options: { cmd: [sh, -c, "printf 'P>'; cat"] }

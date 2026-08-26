@@ -79,9 +79,13 @@ func build(t *testing.T) string {
 func run(t *testing.T, cfg string, w, h int) (*session.Session, func() *screen) {
 	t.Helper()
 	s, err := session.Start(session.Spec{
-		ID:     "claudecontrol",
-		Argv:   []string{build(t), "-config", cfg},
-		Dir:    ".",
+		ID:   "claudecontrol",
+		Argv: []string{build(t), "-config", cfg},
+		Dir:  ".",
+		// The application records its panes on every layout change. Pointed at
+		// a temporary directory so a test run never touches the state of the
+		// person running it.
+		Env:    []string{"XDG_STATE_HOME=" + t.TempDir()},
 		Width:  w,
 		Height: h,
 	})
@@ -261,12 +265,12 @@ func TestClickFocusesAPaneWithoutReachingItsGuest(t *testing.T) {
 // The status bar is the mouse-only path to everything the keyboard can do, so
 // its labels are part of the contract.
 func TestStatusBarOffersTheExpectedButtons(t *testing.T) {
-	const W, H = 76, 14
+	const W, H = 100, 14
 	_, snap := run(t, "testdata/two-echo.yaml", W, H)
 	waitForRow(t, snap, 0, "L>")
 
 	bar := waitForRow(t, snap, H-1, "quit").row(H - 1)
-	for _, label := range []string{"new", "close", "zoom", "flip", "equal", "help", "quit"} {
+	for _, label := range []string{"new", "close", "list", "help", "zoom", "flip", "equal", "quit"} {
 		if !strings.Contains(bar, label) {
 			t.Errorf("status bar = %q, missing %q", bar, label)
 		}
@@ -443,4 +447,127 @@ func TestClickingOutsideTheQuitButtonsStays(t *testing.T) {
 	if anywhere(snap(), "[ quit ]") {
 		t.Error("the confirmation is still open")
 	}
+}
+
+// A bar too narrow for every button drops from the end rather than letting
+// labels overlap. Quit and the essentials survive; what goes is still on the
+// keyboard and in the help panel.
+func TestNarrowStatusBarDropsTheLeastImportantButtons(t *testing.T) {
+	const W, H = 52, 14
+	_, snap := run(t, "testdata/two-echo.yaml", W, H)
+	waitForRow(t, snap, 0, "L>")
+
+	bar := waitForRow(t, snap, H-1, "quit").row(H - 1)
+	for _, label := range []string{"new", "close", "quit"} {
+		if !strings.Contains(bar, label) {
+			t.Errorf("status bar = %q, dropped the essential %q", bar, label)
+		}
+	}
+	if ansi.StringWidth(bar) > W {
+		t.Errorf("status bar is %d columns wide on a %d column screen: %q",
+			ansi.StringWidth(bar), W, bar)
+	}
+}
+
+// The session list is the answer to "is Claude waiting for me anywhere?", so
+// it must open, show what the pool holds, and close again without disturbing
+// the panes behind it.
+func TestSessionPanelOpensFromTheStatusBar(t *testing.T) {
+	const W, H = 90, 24
+	s, snap := run(t, "testdata/one-pane.yaml", W, H)
+	waitForRow(t, snap, 0, "P>")
+
+	bar := waitForRow(t, snap, H-1, "list").row(H - 1)
+	click(t, s, columnOf(bar, "list"), H-1)
+	waitForAnywhere(t, snap, "SESSIONS")
+	waitForAnywhere(t, snap, "enter attach")
+
+	// The hosted command is in the pool, so the list must show it rather than
+	// claiming there is nothing.
+	if anywhere(snap(), "no sessions") {
+		t.Error("the list is empty while a session is hosted")
+	}
+
+	s.SendText("\x1b") // escape
+	time.Sleep(400 * time.Millisecond)
+	if anywhere(snap(), "enter attach") {
+		t.Fatal("escape left the session list open")
+	}
+
+	// The pane is still there, and still the pane.
+	waitForRow(t, snap, 0, "P>")
+	s.SendText("A")
+	waitForRow(t, snap, 0, "P>A")
+}
+
+// The whole point of the hook bridge: a session that needs an answer says so,
+// and the status bar shows it without anyone having to look at that pane.
+//
+// Claude Code is not involved. The hook command is our own binary, so the
+// chain — socket, environment variable, payload, state mapping, status bar —
+// can be exercised by invoking it exactly the way Claude Code would.
+func TestAHookMarksASessionAsWaiting(t *testing.T) {
+	const W, H = 90, 14
+	runtimeDir := t.TempDir()
+	bin := build(t)
+
+	s, err := session.Start(session.Spec{
+		ID:   "claudecontrol",
+		Argv: []string{bin, "-config", "testdata/one-pane.yaml"},
+		Dir:  ".",
+		Env: []string{
+			"XDG_STATE_HOME=" + t.TempDir(),
+			"XDG_RUNTIME_DIR=" + runtimeDir,
+		},
+		Width:  W,
+		Height: H,
+	})
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	snap := func() *screen {
+		g := newScreen(W, H)
+		s.Term.Draw(g, uv.Rect(0, 0, W, H))
+		return g
+	}
+
+	waitForRow(t, snap, 0, "P>")
+	waitForRow(t, snap, H-1, "1 pane")
+
+	socket := waitForSocket(t, runtimeDir)
+
+	// A term pane names its session after the pane it lives in.
+	cmd := exec.Command(bin, "--hook", "Notification")
+	cmd.Env = append(os.Environ(), "CLAUDECONTROL_HOOK_SOCKET="+socket)
+	cmd.Stdin = strings.NewReader(`{"session_id":"pane-1-1","cwd":"/tmp"}`)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("hook: %v\n%s", err, out)
+	}
+
+	waitForRow(t, snap, H-1, "1 waiting")
+
+	// And a Stop takes it back to quiet.
+	cmd = exec.Command(bin, "--hook", "Stop")
+	cmd.Env = append(os.Environ(), "CLAUDECONTROL_HOOK_SOCKET="+socket)
+	cmd.Stdin = strings.NewReader(`{"session_id":"pane-1-1"}`)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("hook: %v\n%s", err, out)
+	}
+	waitForRow(t, snap, H-1, "1 pane")
+}
+
+// waitForSocket waits for the application to open its hook socket.
+func waitForSocket(t *testing.T, dir string) string {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		matches, _ := filepath.Glob(filepath.Join(dir, "claudecontrol-*.sock"))
+		if len(matches) > 0 {
+			return matches[0]
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("no hook socket appeared in %s", dir)
+	return ""
 }
