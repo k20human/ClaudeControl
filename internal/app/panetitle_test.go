@@ -91,3 +91,42 @@ func TestTheHologramHasNoTitleRow(t *testing.T) {
 	}
 	t.Errorf("nothing braille reached row 0 of the hologram pane: %q", snap().row(0))
 }
+
+// The status bar reaches the bottom of the terminal and fills its whole width.
+// A last row left short would show the terminal's own background beneath the
+// interface, which reads as a gap the application put there.
+func TestTheStatusBarFillsTheLastRow(t *testing.T) {
+	for _, size := range [][2]int{{80, 24}, {100, 18}, {64, 12}} {
+		w, h := size[0], size[1]
+		t.Run(fmt.Sprintf("%dx%d", w, h), func(t *testing.T) {
+			_, snap := run(t, "testdata/holo-term.yaml", w, h)
+			waitForRow(t, snap, paneRow0, "L>")
+
+			deadline := time.Now().Add(3 * time.Second)
+			for time.Now().Before(deadline) {
+				if rowPainted(snap(), w, h-1) {
+					return
+				}
+				time.Sleep(50 * time.Millisecond)
+			}
+			g := snap()
+			for x := 0; x < w; x++ {
+				if c := g.CellAt(x, h-1); c == nil || c.Style.Bg == nil {
+					t.Fatalf("column %d of the last row is unpainted; the row reads %q",
+						x, g.row(h-1))
+				}
+			}
+		})
+	}
+}
+
+// rowPainted reports whether every cell of a row has a background of its own.
+func rowPainted(g *screen, w, y int) bool {
+	for x := 0; x < w; x++ {
+		c := g.CellAt(x, y)
+		if c == nil || c.Style.Bg == nil {
+			return false
+		}
+	}
+	return true
+}
