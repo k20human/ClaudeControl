@@ -31,6 +31,11 @@ type Spec struct {
 	Dir       string
 	Env       []string
 	Autostart bool
+
+	// Optional leaves the service unticked, so the buttons skip it until you
+	// say otherwise. It is still listed and still startable on its own — the
+	// point is that "start" means the usual set, not everything that exists.
+	Optional bool
 }
 
 // State is what a service is doing.
@@ -110,7 +115,7 @@ func New(cfg map[string]any) (module.Module, error) {
 		if err != nil {
 			return nil, err
 		}
-		m.svcs = append(m.svcs, &service{spec: s, picked: true})
+		m.svcs = append(m.svcs, &service{spec: s, picked: !s.Optional})
 	}
 	if len(m.svcs) == 0 {
 		return nil, fmt.Errorf("supervisor: no %q configured", "services")
@@ -130,12 +135,19 @@ func specFrom(raw map[string]any) (Spec, error) {
 	env, _ := toStrings(raw["env"])
 	dir, _ := raw["dir"].(string)
 	auto, _ := raw["autostart"].(bool)
+	opt, _ := raw["optional"].(bool)
+	if auto && opt {
+		return Spec{}, fmt.Errorf(
+			"supervisor: service %q is both %q and %q; one says start it now, the other says leave it out",
+			name, "autostart", "optional")
+	}
 	return Spec{
 		Name:      name,
 		Argv:      argv,
 		Dir:       expand(dir),
 		Env:       env,
 		Autostart: auto,
+		Optional:  opt,
 	}, nil
 }
 

@@ -16,6 +16,14 @@ import (
 // painted over it.
 const headerRows = 2
 
+// The name column follows the longest name, between these bounds; the state
+// column is fixed, because it is the one you scan down.
+const (
+	nameMin = 8
+	nameMax = 24
+	stateW  = 9
+)
+
 var (
 	bgPanel = color.RGBA{R: 0x14, G: 0x1a, B: 0x24, A: 0xff}
 	bgRule  = color.RGBA{R: 0x24, G: 0x2b, B: 0x38, A: 0xff}
@@ -84,16 +92,38 @@ func (m *Module) drawList(scr uv.Screen, area uv.Rectangle) {
 		render.Fill(scr, uv.Rect(area.Min.X, y+1, area.Dx(), 1), bgRule)
 	}
 
+	nameW := m.nameWidthLocked(area.Dx())
 	for i, s := range m.svcs {
 		ry := area.Min.Y + headerRows + i
 		if ry >= area.Max.Y {
 			return
 		}
-		m.drawRow(scr, area, ry, i, s)
+		m.drawRow(scr, area, ry, i, s, nameW)
 	}
 }
 
-func (m *Module) drawRow(scr uv.Screen, area uv.Rectangle, y, i int, s *service) {
+// nameWidthLocked sizes the name column to the longest name there is, rather
+// than to a number chosen in advance. A service is named after the directory
+// it runs in, and "provision-relay-api" is not an unusual thing to call one.
+func (m *Module) nameWidthLocked(paneW int) int {
+	w := nameMin
+	for _, s := range m.svcs {
+		if n := ansi.StringWidth(s.spec.Name); n > w {
+			w = n
+		}
+	}
+	if w > nameMax {
+		w = nameMax
+	}
+	// Never at the expense of the state, which is the column you actually
+	// scan.
+	if room := paneW - 6 - stateW; w > room {
+		w = room
+	}
+	return w
+}
+
+func (m *Module) drawRow(scr uv.Screen, area uv.Rectangle, y, i int, s *service, nameW int) {
 	bg := color.Color(bgPanel)
 	if i == m.sel {
 		bg = bgPick
@@ -110,10 +140,9 @@ func (m *Module) drawRow(scr uv.Screen, area uv.Rectangle, y, i int, s *service)
 	m.hits = append(m.hits, hit{x: x, y: y, w: 3, run: func(m *Module) { m.toggle(idx) }})
 	x += 4
 
-	name := clip(s.spec.Name, 14)
-	render.Text(scr, x, y, fmt.Sprintf("%-14s", name), fgText, bg)
-	m.hits = append(m.hits, hit{x: x, y: y, w: 14, run: func(m *Module) { m.show(idx) }})
-	x += 15
+	render.Text(scr, x, y, fmt.Sprintf("%-*s", nameW, clip(s.spec.Name, nameW)), fgText, bg)
+	m.hits = append(m.hits, hit{x: x, y: y, w: nameW, run: func(m *Module) { m.show(idx) }})
+	x += nameW + 1
 
 	fg := color.Color(fgMuted)
 	detail := ""
@@ -127,9 +156,9 @@ func (m *Module) drawRow(scr uv.Screen, area uv.Rectangle, y, i int, s *service)
 		fg = fgDown
 		detail = fmt.Sprintf("code %-6d %s ago", s.code, forHowLong(s.since))
 	}
-	render.Text(scr, x, y, fmt.Sprintf("%-9s", s.state), fg, bg)
-	if x+10 < area.Max.X {
-		render.Text(scr, x+10, y, clip(detail, area.Max.X-x-10), fgMuted, bg)
+	render.Text(scr, x, y, fmt.Sprintf("%-*s", stateW, s.state), fg, bg)
+	if x+stateW+1 < area.Max.X {
+		render.Text(scr, x+stateW+1, y, clip(detail, area.Max.X-x-stateW-1), fgMuted, bg)
 	}
 }
 

@@ -310,3 +310,61 @@ func TestConfigurationIsCheckedRatherThanGuessed(t *testing.T) {
 func clickAt(x, y int) uv.MouseEvent {
 	return uv.MouseClickEvent{X: x, Y: y, Button: uv.MouseLeft}
 }
+
+// "Optional" means listed but not ticked: start means the usual set, not
+// everything that exists.
+func TestAnOptionalServiceIsListedButNotPicked(t *testing.T) {
+	m := build(t, map[string]any{"services": []any{
+		map[string]any{"name": "usual", "cmd": []any{"sh", "-c", "sleep 300"}},
+		map[string]any{"name": "spare", "cmd": []any{"sh", "-c", "sleep 300"}, "optional": true},
+	}})
+	if !stateOf(m, "usual").Picked {
+		t.Error("the usual service is not picked")
+	}
+	if stateOf(m, "spare").Picked {
+		t.Error("the optional service is picked")
+	}
+	if out := paint(t, m, 70, 8).text(); !strings.Contains(out, "spare") {
+		t.Errorf("the optional service is not listed:\n%s", out)
+	}
+
+	m.StartPicked()
+	waitFor(t, "the usual one", func() bool { return stateOf(m, "usual").State == supervisor.Running })
+	if got := stateOf(m, "spare").State; got != supervisor.Stopped {
+		t.Errorf("the optional service is %v after start", got)
+	}
+}
+
+// Asking for both at once is a contradiction worth naming rather than
+// resolving quietly.
+func TestOptionalAndAutostartTogetherAreRefused(t *testing.T) {
+	_, err := module.New("supervisor", map[string]any{"services": []any{
+		map[string]any{"name": "x", "cmd": []any{"true"}, "autostart": true, "optional": true},
+	}})
+	if err == nil {
+		t.Fatal("accepted")
+	}
+	if !strings.Contains(err.Error(), "autostart") || !strings.Contains(err.Error(), "optional") {
+		t.Errorf("the error does not name both: %v", err)
+	}
+}
+
+// A service is named after the directory it runs in, and those names are not
+// short. The column follows the longest rather than clipping every row.
+func TestTheNameColumnFollowsTheLongestName(t *testing.T) {
+	m := build(t, map[string]any{"services": []any{
+		map[string]any{"name": "api", "cmd": []any{"sh", "-c", "sleep 300"}},
+		map[string]any{"name": "provision-relay-api", "cmd": []any{"sh", "-c", "sleep 300"}},
+	}})
+	out := paint(t, m, 80, 8).text()
+	if !strings.Contains(out, "provision-relay-api") {
+		t.Errorf("the long name was clipped:\n%s", out)
+	}
+	// And the state still lines up under itself.
+	rows := paint(t, m, 80, 8)
+	a := strings.Index(rows.row(2), "stopped")
+	b := strings.Index(rows.row(3), "stopped")
+	if a < 0 || a != b {
+		t.Errorf("the state column is ragged: %d against %d\n%s", a, b, out)
+	}
+}
