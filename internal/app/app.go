@@ -93,6 +93,11 @@ type App struct {
 	barCountX int
 	barCountW int
 
+	// barUsageX and barUsageW are the slot for the account budget, reserved
+	// only while some pane is fetching one.
+	barUsageX int
+	barUsageW int
+
 	// pointerX and pointerY are the last reported pointer position, so a panel
 	// button can light up under it the way a status-bar button does.
 	pointerX, pointerY int

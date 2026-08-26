@@ -75,13 +75,13 @@ func (a *App) paneDetail(id layout.PaneID) string {
 	}
 	parts := make([]string, 0, 3)
 	if m.Model != "" {
-		parts = append(parts, shortModel(m.Model))
+		parts = append(parts, transcript.ShortModel(m.Model))
 	}
 	if m.Context > 0 {
 		// Absolute counts, never a percentage: the context window is a
 		// published number that goes out of date, and a wrong percentage is
 		// worse than none.
-		parts = append(parts, humanTokens(m.Context)+" ctx")
+		parts = append(parts, transcript.HumanTokens(m.Context)+" ctx")
 	}
 	if m.CacheRate > 0 {
 		parts = append(parts, fmt.Sprintf("%.0f%% cache", m.CacheRate*100))
@@ -95,26 +95,6 @@ func (a *App) sessionUsage(id string) (transcript.Metrics, bool) {
 	defer a.usageMu.RUnlock()
 	m, ok := a.usage[id]
 	return m, ok
-}
-
-// shortModel drops the vendor prefix, which is the same on every line and
-// tells you nothing.
-func shortModel(model string) string {
-	return strings.TrimPrefix(model, "claude-")
-}
-
-// humanTokens keeps a token count to a few characters without lying about its
-// order of magnitude.
-func humanTokens(n int) string {
-	switch {
-	case n >= 1_000_000:
-		return fmt.Sprintf("%.1fM", float64(n)/1_000_000)
-	case n >= 10_000:
-		return fmt.Sprintf("%dk", n/1000)
-	case n >= 1_000:
-		return fmt.Sprintf("%.1fk", float64(n)/1000)
-	}
-	return fmt.Sprintf("%d", n)
 }
 
 // truncate clips text to a width, marking that it was clipped.

@@ -1,4 +1,5 @@
-# The whole thing: a session, the hologram, service checks and tasks.
+# The whole thing: a session, the hologram, statistics, service checks and
+# tasks.
 # Run with: ./bin/claudecontrol -config examples/control-centre.yaml
 layout:
   split: horizontal
@@ -8,10 +9,20 @@ layout:
       options:
         dir: ~/GolandProjects/ClaudeControl
     - split: vertical
-      ratios: [2, 1, 1]
+      ratios: [2, 1, 1, 1]
       children:
         - module: hologram
           options: { style: sphere }
+        # Token use per session, and the account's five-hour and weekly
+        # budgets. The budgets are the only thing in this application that
+        # reaches the network: they are read with the OAuth token Claude Code
+        # stores, from an internal endpoint with no compatibility promise.
+        # Set account: false to keep everything local — the per-session
+        # figures come from the transcripts and cost nothing.
+        - module: stats
+          options:
+            interval: 180
+            account: true
         - module: services
           options:
             interval: 5

@@ -10,6 +10,7 @@ import (
 	"claudecontrol/internal/layout"
 	"claudecontrol/internal/module"
 	"claudecontrol/internal/pool"
+	"claudecontrol/internal/transcript"
 )
 
 func transcriptApp(t *testing.T) *App {
@@ -38,7 +39,7 @@ func TestFollowingATranscriptPublishesMetrics(t *testing.T) {
 	a := transcriptApp(t)
 	defer a.stopTranscripts()
 
-	ch := a.bus.SubscribeState(UsageTopic)
+	ch := a.bus.SubscribeState(transcript.SessionTopic)
 	p := filepath.Join(t.TempDir(), "t.jsonl")
 	body := `{"type":"assistant","message":{"model":"claude-opus-5","usage":{"input_tokens":2,"cache_read_input_tokens":98,"output_tokens":5}}}` + "\n"
 	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
@@ -49,7 +50,7 @@ func TestFollowingATranscriptPublishesMetrics(t *testing.T) {
 
 	select {
 	case v := <-ch:
-		sm, ok := v.(SessionMetrics)
+		sm, ok := v.(transcript.SessionMetrics)
 		if !ok {
 			t.Fatalf("published %T, want SessionMetrics", v)
 		}

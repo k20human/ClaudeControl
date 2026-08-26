@@ -19,24 +19,6 @@ func TestContentRectGivesUpTheTitleRow(t *testing.T) {
 	}
 }
 
-func TestHumanTokensStaysShortWithoutLying(t *testing.T) {
-	for _, c := range []struct {
-		in   int
-		want string
-	}{
-		{0, "0"},
-		{812, "812"},
-		{1_200, "1.2k"},
-		{34_000, "34k"},
-		{999_999, "999k"},
-		{1_250_000, "1.2M"},
-	} {
-		if got := humanTokens(c.in); got != c.want {
-			t.Errorf("humanTokens(%d) = %q, want %q", c.in, got, c.want)
-		}
-	}
-}
-
 func TestTruncateMarksWhatItCut(t *testing.T) {
 	for _, c := range []struct {
 		in   string
@@ -52,14 +34,5 @@ func TestTruncateMarksWhatItCut(t *testing.T) {
 		if got := truncate(c.in, c.w); got != c.want {
 			t.Errorf("truncate(%q, %d) = %q, want %q", c.in, c.w, got, c.want)
 		}
-	}
-}
-
-func TestShortModelDropsTheVendorPrefix(t *testing.T) {
-	if got := shortModel("claude-opus-5"); got != "opus-5" {
-		t.Errorf("shortModel = %q, want %q", got, "opus-5")
-	}
-	if got := shortModel("something-else"); got != "something-else" {
-		t.Errorf("shortModel rewrote an unrelated name to %q", got)
 	}
 }

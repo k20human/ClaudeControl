@@ -3,12 +3,14 @@ package app
 import (
 	"fmt"
 	"image/color"
+	"math"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 
 	"claudecontrol/internal/layout"
 	"claudecontrol/internal/render"
+	"claudecontrol/internal/usage"
 )
 
 var (
@@ -72,6 +74,19 @@ func (a *App) buildStatusBar() []button {
 	a.barCountW = ansi.StringWidth("99 waiting")
 	a.barCountX = quitX - 2 - a.barCountW
 	limit := a.barCountX - 1
+
+	// The account budget sits beside the count, and only when something is
+	// already fetching it: reserving the space unconditionally would shorten
+	// the bar for everyone who never asked for the figure.
+	// Reserved on the presence of a source, not on a reading: the first
+	// reading arrives seconds after the layout is settled, and a slot that
+	// appeared then would shove the buttons sideways under the pointer.
+	a.barUsageX, a.barUsageW = 0, 0
+	if a.hasAccountSource() {
+		a.barUsageW = ansi.StringWidth("5h 100%  wk 100%")
+		a.barUsageX = a.barCountX - 2 - a.barUsageW
+		limit = a.barUsageX - 1
+	}
 
 	x := 1
 	for _, it := range items {
@@ -138,6 +153,59 @@ func (a *App) drawStatusBar(scr uv.Screen) {
 		x := a.barCountX + a.barCountW - ansi.StringWidth(label)
 		render.Text(scr, x, y, label, barCountFg, barBg)
 	}
+
+	a.drawBarUsage(scr, y)
+}
+
+// drawBarUsage reprises the account's budgets in the bar, so the figure is
+// there without opening the stats pane.
+//
+// Only what a glance needs: the two shares. Reset times and per-model caps
+// stay in the pane, which has the room to say what they mean.
+func (a *App) drawBarUsage(scr uv.Screen, y int) {
+	if a.barUsageX <= 0 {
+		return
+	}
+	r, ok := a.accountReading()
+	if !ok {
+		return
+	}
+	if r.Err != nil {
+		render.Text(scr, a.barUsageX, y, "usage unavailable", barQuitFg, barBg)
+		return
+	}
+	label := fmt.Sprintf("5h %3.0f%%  wk %3.0f%%", r.Snapshot.FiveHour.Percent, r.Snapshot.SevenDay.Percent)
+	x := a.barUsageX + a.barUsageW - ansi.StringWidth(label)
+	fg := barCountFg
+	if worst := math.Max(r.Snapshot.FiveHour.Percent, r.Snapshot.SevenDay.Percent); worst >= 85 {
+		fg = barQuitFg
+	}
+	render.Text(scr, x, y, label, fg, barBg)
+}
+
+// hasAccountSource reports whether any pane is fetching the account's budgets.
+func (a *App) hasAccountSource() bool {
+	for _, m := range a.modules {
+		if _, ok := m.(interface{ Account() (usage.Reading, bool) }); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// accountReading is the last budget reading from whichever pane is fetching
+// one. Nothing here starts a fetch: the bar reports, it does not ask.
+func (a *App) accountReading() (usage.Reading, bool) {
+	for _, m := range a.modules {
+		acc, ok := m.(interface{ Account() (usage.Reading, bool) })
+		if !ok {
+			continue
+		}
+		if r, taken := acc.Account(); taken {
+			return r, true
+		}
+	}
+	return usage.Reading{}, false
 }
 
 // buttonAt returns the index of the button under the pointer, or -1.

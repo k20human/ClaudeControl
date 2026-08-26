@@ -6,15 +6,6 @@ import (
 	"claudecontrol/internal/transcript"
 )
 
-// UsageTopic is where per-session metrics are published.
-const UsageTopic = "session.usage"
-
-// SessionMetrics ties a turn's metrics to the session that produced them.
-type SessionMetrics struct {
-	SessionID string
-	Metrics   transcript.Metrics
-}
-
 // followTranscript starts following a session's transcript, once.
 //
 // A hook fires several times a turn and carries the same path every time, so
@@ -49,7 +40,7 @@ func (a *App) followTranscript(sessionID, path string) {
 			}
 			a.usage[sessionID] = m
 			a.usageMu.Unlock()
-			a.bus.PublishState(UsageTopic, SessionMetrics{
+			a.bus.PublishState(transcript.SessionTopic, transcript.SessionMetrics{
 				SessionID: sessionID,
 				Metrics:   m,
 			})

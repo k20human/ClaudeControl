@@ -14,6 +14,7 @@ import (
 	_ "claudecontrol/modules/claude"
 	_ "claudecontrol/modules/hologram"
 	_ "claudecontrol/modules/services"
+	_ "claudecontrol/modules/stats"
 	_ "claudecontrol/modules/tasks"
 	_ "claudecontrol/modules/term"
 )

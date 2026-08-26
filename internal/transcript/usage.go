@@ -1,5 +1,43 @@
 package transcript
 
+import (
+	"fmt"
+	"strings"
+)
+
+// SessionTopic is where per-session metrics are published.
+//
+// The topic and its payload live here rather than beside the publisher: a
+// module that wants to display them cannot import the application, which
+// already imports modules.
+const SessionTopic = "session.usage"
+
+// SessionMetrics ties a turn's metrics to the session that produced them.
+type SessionMetrics struct {
+	SessionID string
+	Metrics   Metrics
+}
+
+// ShortModel drops the vendor prefix, which is the same on every line and
+// tells you nothing.
+func ShortModel(model string) string {
+	return strings.TrimPrefix(model, "claude-")
+}
+
+// HumanTokens keeps a token count to a few characters without lying about its
+// order of magnitude.
+func HumanTokens(n int) string {
+	switch {
+	case n >= 1_000_000:
+		return fmt.Sprintf("%.1fM", float64(n)/1_000_000)
+	case n >= 10_000:
+		return fmt.Sprintf("%dk", n/1000)
+	case n >= 1_000:
+		return fmt.Sprintf("%.1fk", float64(n)/1000)
+	}
+	return fmt.Sprintf("%d", n)
+}
+
 // Metrics are what one assistant turn says about the session.
 type Metrics struct {
 	Context   int     // tokens the request carried
