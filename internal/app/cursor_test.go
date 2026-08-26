@@ -40,9 +40,9 @@ func TestAnAnimatedPaneDoesNotFlickerTheCursor(t *testing.T) {
 	s, snap := run(t, "testdata/holo-term.yaml", W, H)
 	count := cursorWatch(t, s.Term)
 
-	waitForRow(t, snap, 0, "L>")
+	waitForRow(t, snap, paneRow0, "L>")
 	s.SendText("Z")
-	waitForRow(t, snap, 0, "L>Z")
+	waitForRow(t, snap, paneRow0, "L>Z")
 	// Let the frame after the keystroke settle before counting.
 	time.Sleep(500 * time.Millisecond)
 
@@ -61,27 +61,27 @@ func TestTheCursorSitsWhereYouType(t *testing.T) {
 	const W, H = 80, 16
 	s, snap := run(t, "testdata/holo-term.yaml", W, H)
 
-	waitForRow(t, snap, 0, "L>")
+	waitForRow(t, snap, paneRow0, "L>")
 	s.SendText("Z")
-	waitForRow(t, snap, 0, "L>Z")
+	waitForRow(t, snap, paneRow0, "L>Z")
 
 	// The left pane starts at column 0, so the guest's column is the screen's.
 	// "L>Z" is three cells, and the cursor follows them.
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
-		if reversed(snap(), 3, 0) {
+		if reversed(snap(), 3, paneRow0) {
 			// And nowhere else: a cursor left in another pane is a block
 			// sitting on someone else's content.
 			for x := 4; x < W; x++ {
-				if reversed(snap(), x, 0) {
-					t.Fatalf("column %d of row 0 is reversed too", x)
+				if reversed(snap(), x, paneRow0) {
+					t.Fatalf("column %d of the first content row is reversed too", x)
 				}
 			}
 			return
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Errorf("no cursor at column 3 of row 0; row 0 = %q", snap().row(0))
+	t.Errorf("no cursor at column 3 of the first content row; row 0 = %q", snap().row(paneRow0))
 }
 
 // reversed reports whether the cell carries the reverse attribute.

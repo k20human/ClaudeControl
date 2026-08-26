@@ -42,9 +42,16 @@ func (a *App) followTranscript(sessionID, path string) {
 			if line.Type != "assistant" {
 				continue
 			}
+			m := transcript.Derive(line.Model, line.Usage, windows)
+			a.usageMu.Lock()
+			if a.usage == nil {
+				a.usage = make(map[string]transcript.Metrics)
+			}
+			a.usage[sessionID] = m
+			a.usageMu.Unlock()
 			a.bus.PublishState(UsageTopic, SessionMetrics{
 				SessionID: sessionID,
-				Metrics:   transcript.Derive(line.Model, line.Usage, windows),
+				Metrics:   m,
 			})
 			a.Wake()
 		}

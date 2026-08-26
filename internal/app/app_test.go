@@ -60,6 +60,10 @@ func (b *screen) row(y int) string {
 }
 
 // build compiles the command once per test binary run.
+// paneRow0 is the screen row where a pane's own content starts. The row above
+// it carries the pane title.
+const paneRow0 = 1
+
 func build(t *testing.T) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "claudecontrol")
@@ -163,10 +167,10 @@ func TestTwoPanesRenderSideBySideAndPersist(t *testing.T) {
 	const W, H = 60, 12
 	_, snap := run(t, "testdata/two-panes.yaml", W, H)
 
-	g := waitForRow(t, snap, 0, "RIGHTPANE")
-	g = waitForRow(t, snap, 0, "LEFTPANE")
+	g := waitForRow(t, snap, paneRow0, "RIGHTPANE")
+	g = waitForRow(t, snap, paneRow0, "LEFTPANE")
 
-	row := g.row(0)
+	row := g.row(paneRow0)
 	if !strings.HasPrefix(row, "LEFTPANE") {
 		t.Errorf("row 0 = %q, want it to start with LEFTPANE", row)
 	}
@@ -178,7 +182,7 @@ func TestTwoPanesRenderSideBySideAndPersist(t *testing.T) {
 
 	// Neither guest writes again. A pane that is painted must stay painted.
 	time.Sleep(500 * time.Millisecond)
-	again := snap().row(0)
+	again := snap().row(paneRow0)
 	if again != row {
 		t.Errorf("row 0 changed with no guest output:\n before %q\n after  %q", row, again)
 	}
@@ -190,13 +194,13 @@ func TestFocusRoutesTypingToTheFocusedPane(t *testing.T) {
 	const W, H = 60, 12
 	s, snap := run(t, "testdata/two-echo.yaml", W, H)
 
-	waitForRow(t, snap, 0, "L>")
-	waitForRow(t, snap, 0, "R>")
+	waitForRow(t, snap, paneRow0, "L>")
+	waitForRow(t, snap, paneRow0, "R>")
 
 	// Focus starts on the first pane of the layout.
 	s.SendText("A")
 	time.Sleep(150 * time.Millisecond)
-	waitForRow(t, snap, 0, "L>A")
+	waitForRow(t, snap, paneRow0, "L>A")
 
 	// Alt+key reaches the terminal as ESC followed by the letter, and the
 	// input decoder needs its escape timeout to elapse before it can tell that
@@ -211,11 +215,11 @@ func TestFocusRoutesTypingToTheFocusedPane(t *testing.T) {
 
 	sendKey("\x1bl") // alt+l
 	sendKey("B")
-	waitForRow(t, snap, 0, "R>B")
+	waitForRow(t, snap, paneRow0, "R>B")
 
 	sendKey("\x1bh") // alt+h
 	sendKey("C")
-	waitForRow(t, snap, 0, "L>AC")
+	waitForRow(t, snap, paneRow0, "L>AC")
 }
 
 // click sends an SGR mouse press and release at a zero-based cell. SGR
@@ -239,18 +243,18 @@ func TestClickFocusesAPaneWithoutReachingItsGuest(t *testing.T) {
 	const W, H = 60, 12
 	s, snap := run(t, "testdata/two-echo.yaml", W, H)
 
-	waitForRow(t, snap, 0, "L>")
-	waitForRow(t, snap, 0, "R>")
+	waitForRow(t, snap, paneRow0, "L>")
+	waitForRow(t, snap, paneRow0, "R>")
 
 	// Click well inside the right pane, which starts at column 30.
 	click(t, s, 45, 5)
 	s.SendText("B")
 	time.Sleep(150 * time.Millisecond)
-	waitForRow(t, snap, 0, "R>B")
+	waitForRow(t, snap, paneRow0, "R>B")
 
 	// The guests echo everything they receive. Had the click been forwarded,
 	// its escape sequence would have left a trace in the pane.
-	row := snap().row(0)
+	row := snap().row(paneRow0)
 	if strings.Contains(row, "[<0") || strings.Contains(row, "0;46;6") {
 		t.Errorf("row 0 = %q, the click reached the guest", row)
 	}
@@ -259,7 +263,7 @@ func TestClickFocusesAPaneWithoutReachingItsGuest(t *testing.T) {
 	click(t, s, 5, 5)
 	s.SendText("C")
 	time.Sleep(150 * time.Millisecond)
-	waitForRow(t, snap, 0, "L>C")
+	waitForRow(t, snap, paneRow0, "L>C")
 }
 
 // The status bar is the mouse-only path to everything the keyboard can do, so
@@ -269,7 +273,7 @@ func TestStatusBarOffersTheExpectedButtons(t *testing.T) {
 	// purpose, which TestNarrowStatusBarDropsTheLeastImportantButtons covers.
 	const W, H = 112, 14
 	_, snap := run(t, "testdata/two-echo.yaml", W, H)
-	waitForRow(t, snap, 0, "L>")
+	waitForRow(t, snap, paneRow0, "L>")
 
 	bar := waitForRow(t, snap, H-1, "quit").row(H - 1)
 	for _, label := range []string{"new", "close", "list", "help", "set", "cmd", "zoom", "flip", "equal", "quit"} {
@@ -287,8 +291,8 @@ func TestStatusBarOffersTheExpectedButtons(t *testing.T) {
 func TestHelpPanelOpensOnClickAndSwallowsTheKeyThatClosesIt(t *testing.T) {
 	const W, H = 76, 20
 	s, snap := run(t, "testdata/two-echo.yaml", W, H)
-	waitForRow(t, snap, 0, "L>")
-	waitForRow(t, snap, 0, "R>")
+	waitForRow(t, snap, paneRow0, "L>")
+	waitForRow(t, snap, paneRow0, "R>")
 
 	bar := waitForRow(t, snap, H-1, "help").row(H - 1)
 	click(t, s, columnOf(bar, "help"), H-1)
@@ -299,7 +303,7 @@ func TestHelpPanelOpensOnClickAndSwallowsTheKeyThatClosesIt(t *testing.T) {
 	if anywhere(snap(), "SHORTCUTS") {
 		t.Fatal("the panel is still open")
 	}
-	if row := snap().row(0); strings.Contains(row, "L>Z") || strings.Contains(row, "R>Z") {
+	if row := snap().row(paneRow0); strings.Contains(row, "L>Z") || strings.Contains(row, "R>Z") {
 		t.Errorf("row 0 = %q, the dismissing key leaked into a session", row)
 	}
 }
@@ -309,7 +313,7 @@ func TestHelpPanelOpensOnClickAndSwallowsTheKeyThatClosesIt(t *testing.T) {
 func TestQuitButtonAsksBeforeEndingEverything(t *testing.T) {
 	const W, H = 76, 20
 	s, snap := run(t, "testdata/two-echo.yaml", W, H)
-	waitForRow(t, snap, 0, "L>")
+	waitForRow(t, snap, paneRow0, "L>")
 
 	bar := waitForRow(t, snap, H-1, "quit").row(H - 1)
 	click(t, s, columnOf(bar, "quit"), H-1)
@@ -321,7 +325,7 @@ func TestQuitButtonAsksBeforeEndingEverything(t *testing.T) {
 	if st, _ := s.Status(); st == session.Exited {
 		t.Fatal("answering no quit the application anyway")
 	}
-	waitForRow(t, snap, 0, "L>")
+	waitForRow(t, snap, paneRow0, "L>")
 
 	click(t, s, columnOf(bar, "quit"), H-1)
 	waitForAnywhere(t, snap, "QUIT")
@@ -344,7 +348,7 @@ func TestQuitButtonAsksBeforeEndingEverything(t *testing.T) {
 func TestHelpPanelKeepsItsRightMargin(t *testing.T) {
 	const W, H = 78, 24
 	s, snap := run(t, "testdata/two-echo.yaml", W, H)
-	waitForRow(t, snap, 0, "L>")
+	waitForRow(t, snap, paneRow0, "L>")
 
 	bar := waitForRow(t, snap, H-1, "help").row(H - 1)
 	click(t, s, columnOf(bar, "help"), H-1)
@@ -388,7 +392,7 @@ func findRow(g *screen, text string) int {
 func TestPanelsAnswerToTheMouseAlone(t *testing.T) {
 	const W, H = 78, 24
 	s, snap := run(t, "testdata/two-echo.yaml", W, H)
-	waitForRow(t, snap, 0, "L>")
+	waitForRow(t, snap, paneRow0, "L>")
 	bar := waitForRow(t, snap, H-1, "quit").row(H - 1)
 
 	// Help closes on its own button.
@@ -434,7 +438,7 @@ func TestPanelsAnswerToTheMouseAlone(t *testing.T) {
 func TestClickingOutsideTheQuitButtonsStays(t *testing.T) {
 	const W, H = 78, 24
 	s, snap := run(t, "testdata/two-echo.yaml", W, H)
-	waitForRow(t, snap, 0, "L>")
+	waitForRow(t, snap, paneRow0, "L>")
 	bar := waitForRow(t, snap, H-1, "quit").row(H - 1)
 
 	click(t, s, columnOf(bar, "quit"), H-1)
@@ -457,7 +461,7 @@ func TestClickingOutsideTheQuitButtonsStays(t *testing.T) {
 func TestNarrowStatusBarDropsTheLeastImportantButtons(t *testing.T) {
 	const W, H = 52, 14
 	_, snap := run(t, "testdata/two-echo.yaml", W, H)
-	waitForRow(t, snap, 0, "L>")
+	waitForRow(t, snap, paneRow0, "L>")
 
 	bar := waitForRow(t, snap, H-1, "quit").row(H - 1)
 	for _, label := range []string{"new", "close", "quit"} {
@@ -477,7 +481,7 @@ func TestNarrowStatusBarDropsTheLeastImportantButtons(t *testing.T) {
 func TestSessionPanelOpensFromTheStatusBar(t *testing.T) {
 	const W, H = 90, 24
 	s, snap := run(t, "testdata/one-pane.yaml", W, H)
-	waitForRow(t, snap, 0, "P>")
+	waitForRow(t, snap, paneRow0, "P>")
 
 	bar := waitForRow(t, snap, H-1, "list").row(H - 1)
 	click(t, s, columnOf(bar, "list"), H-1)
@@ -497,9 +501,9 @@ func TestSessionPanelOpensFromTheStatusBar(t *testing.T) {
 	}
 
 	// The pane is still there, and still the pane.
-	waitForRow(t, snap, 0, "P>")
+	waitForRow(t, snap, paneRow0, "P>")
 	s.SendText("A")
-	waitForRow(t, snap, 0, "P>A")
+	waitForRow(t, snap, paneRow0, "P>A")
 }
 
 // The whole point of the hook bridge: a session that needs an answer says so,
@@ -534,7 +538,7 @@ func TestAHookMarksASessionAsWaiting(t *testing.T) {
 		return g
 	}
 
-	waitForRow(t, snap, 0, "P>")
+	waitForRow(t, snap, paneRow0, "P>")
 	waitForRow(t, snap, H-1, "1 pane")
 
 	socket := waitForSocket(t, runtimeDir)
@@ -580,7 +584,7 @@ func waitForSocket(t *testing.T, dir string) string {
 func TestHologramDrawsBesideALiveSession(t *testing.T) {
 	const W, H = 90, 24
 	s, snap := run(t, "testdata/hologram.yaml", W, H)
-	waitForRow(t, snap, 0, "P>")
+	waitForRow(t, snap, paneRow0, "P>")
 
 	deadline := time.Now().Add(10 * time.Second)
 	var found bool
@@ -604,7 +608,7 @@ func TestHologramDrawsBesideALiveSession(t *testing.T) {
 
 	// The session next to it is untouched.
 	s.SendText("A")
-	waitForRow(t, snap, 0, "P>A")
+	waitForRow(t, snap, paneRow0, "P>A")
 }
 
 // Opening the menu, moving a slider and saving is the whole feature. The
@@ -656,7 +660,7 @@ func TestSettingsMenuAdjustsAndSaves(t *testing.T) {
 func TestServicesAndTasksAppearBesideASession(t *testing.T) {
 	const W, H = 100, 24
 	_, snap := run(t, "testdata/control-centre.yaml", W, H)
-	waitForRow(t, snap, 0, "P>")
+	waitForRow(t, snap, paneRow0, "P>")
 
 	// Both verdicts, so a failing check is visibly different from a passing one.
 	waitForAnywhere(t, snap, "always-up")
@@ -672,7 +676,7 @@ func TestServicesAndTasksAppearBesideASession(t *testing.T) {
 func TestThePaletteRunsAnActionByName(t *testing.T) {
 	const W, H = 100, 24
 	s, snap := run(t, "testdata/control-centre.yaml", W, H)
-	waitForRow(t, snap, 0, "P>")
+	waitForRow(t, snap, paneRow0, "P>")
 	waitForAnywhere(t, snap, "always-up")
 
 	bar := waitForRow(t, snap, H-1, "cmd").row(H - 1)
@@ -726,11 +730,11 @@ func release(t *testing.T, s *session.Session, x, y int) {
 func TestAltDraggingAPaneMovesIt(t *testing.T) {
 	const W, H = 80, 16
 	s, snap := run(t, "testdata/two-echo.yaml", W, H)
-	waitForRow(t, snap, 0, "L>")
-	waitForRow(t, snap, 0, "R>")
+	waitForRow(t, snap, paneRow0, "L>")
+	waitForRow(t, snap, paneRow0, "R>")
 
 	// The left guest prompts at column 0, the right one past the divider.
-	before := snap().row(0)
+	before := snap().row(paneRow0)
 	leftAt := strings.Index(before, "L>")
 	rightAt := strings.Index(before, "R>")
 	if leftAt < 0 || rightAt < 0 || leftAt >= rightAt {
@@ -745,26 +749,26 @@ func TestAltDraggingAPaneMovesIt(t *testing.T) {
 
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		row := snap().row(0)
+		row := snap().row(paneRow0)
 		l, r := strings.Index(row, "L>"), strings.Index(row, "R>")
 		if l >= 0 && r >= 0 && r < l {
 			// The panes swapped sides. Typing must reach the pane that was
 			// dragged, which kept the focus.
 			s.SendText("Z")
-			waitForRow(t, snap, 0, "L>Z")
+			waitForRow(t, snap, paneRow0, "L>Z")
 			return
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf("row 0 = %q; the pane did not move", snap().row(0))
+	t.Fatalf("row 0 = %q; the pane did not move", snap().row(paneRow0))
 }
 
 // Escape puts it back down, and the layout is untouched.
 func TestEscapeCancelsAPaneDrag(t *testing.T) {
 	const W, H = 80, 16
 	s, snap := run(t, "testdata/two-echo.yaml", W, H)
-	waitForRow(t, snap, 0, "L>")
-	before := snap().row(0)
+	waitForRow(t, snap, paneRow0, "L>")
+	before := snap().row(paneRow0)
 
 	altClick(t, s, 4, 5)
 	drag(t, s, W-4, 5)
@@ -775,7 +779,7 @@ func TestEscapeCancelsAPaneDrag(t *testing.T) {
 	if anywhere(snap(), "▸ right") {
 		t.Fatal("the preview is still showing after escape")
 	}
-	if got := snap().row(0); got != before {
+	if got := snap().row(paneRow0); got != before {
 		t.Errorf("row 0 = %q after cancelling, want %q", got, before)
 	}
 }

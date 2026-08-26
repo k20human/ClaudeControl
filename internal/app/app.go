@@ -40,6 +40,11 @@ type App struct {
 	tailerMu sync.Mutex
 	tailers  map[string]*transcript.Tailer
 
+	// usage is the last turn seen for each session, kept here so a pane title
+	// can show it without subscribing to the bus per pane.
+	usageMu sync.RWMutex
+	usage   map[string]transcript.Metrics
+
 	// binary is our own executable, which sessions invoke in --hook mode.
 	binary string
 
@@ -316,15 +321,15 @@ func (a *App) relayout() {
 		if !ok {
 			continue
 		}
-		// Resize only on a real size change. Resizing a vt emulator drops its
-		// damage marks, and Draw copies nothing for a row it does not consider
-		// damaged — so a redundant resize blanks a pane until its guest writes
-		// again. A genuine resize has the same effect, but there the guest gets
-		// a SIGWINCH and repaints itself.
+		// Resize only on a real size change. It is not free: resizing a vt
+		// emulator drops its damage marks, which costs the session a full
+		// repaint of itself (see session.Resize), and costs the guest a
+		// SIGWINCH it may act on.
 		if prev, had := old[id]; had && prev.W == r.W && prev.H == r.H {
 			continue
 		}
-		_ = m.Resize(r.W, r.H)
+		c := contentRect(r)
+		_ = m.Resize(c.W, c.H)
 	}
 	a.saveSnapshot()
 }
@@ -350,12 +355,14 @@ func (a *App) draw() {
 		if !ok {
 			continue
 		}
-		area := uv.Rect(r.X, r.Y, r.W, r.H)
+		c := contentRect(r)
+		area := uv.Rect(c.X, c.Y, c.W, c.H)
 		m.Draw(a.scr, area)
 		if code, dead := a.exitedCode(id); dead {
 			exitedBanner(a.scr, area, code)
 		}
 	}
+	a.drawPaneTitles(a.scr)
 	drawDividers(a.scr, a.rects, a.divs, a.focus, a.hoverDiv)
 	a.drawStatusBar(a.scr)
 	a.drawSessionPanel(a.scr)
@@ -385,7 +392,7 @@ func (a *App) cursorTarget() (x, y int, visible bool) {
 	if !visible {
 		return 0, 0, false
 	}
-	r := a.rects[a.focus]
+	r := contentRect(a.rects[a.focus])
 	return r.X + cx, r.Y + cy, true
 }
 

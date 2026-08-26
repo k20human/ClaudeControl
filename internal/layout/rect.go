@@ -2,9 +2,12 @@ package layout
 
 // Minimum usable size for a pane. A split that cannot honour it for every
 // child is not laid out; the caller keeps the previous layout.
+//
+// A pane owes one of its rows to its title, so the floor on height is one more
+// than the content a pane has to be able to show.
 const (
 	MinPaneW = 8
-	MinPaneH = 3
+	MinPaneH = 4
 )
 
 // Divider thickness, in cells. One cell each way: a filled bar one column wide
