@@ -677,7 +677,7 @@ func TestThePaletteRunsAnActionByName(t *testing.T) {
 
 	bar := waitForRow(t, snap, H-1, "cmd").row(H - 1)
 	click(t, s, columnOf(bar, "cmd"), H-1)
-	waitForAnywhere(t, snap, "command palette")
+	waitForAnywhere(t, snap, "›")
 
 	// Type enough to single out zoom, then take it.
 	for _, ch := range []string{"z", "o", "o", "m"} {

@@ -21,11 +21,13 @@ type binding struct {
 }
 
 var bindings = []binding{
-	{[]string{"alt+h", "alt+j", "alt+k", "alt+l"}, "alt+h j k l", "move focus", nil},
-	{[]string{"alt+h"}, "", "", func(a *App) { a.focusDirection(Left) }},
-	{[]string{"alt+l"}, "", "", func(a *App) { a.focusDirection(Right) }},
-	{[]string{"alt+k"}, "", "", func(a *App) { a.focusDirection(Up) }},
-	{[]string{"alt+j"}, "", "", func(a *App) { a.focusDirection(Down) }},
+	// Each direction carries its own description rather than sharing one
+	// display-only line. The palette can only offer an entry that does
+	// something, so a combined row would leave moving focus unreachable there.
+	{[]string{"alt+h"}, "alt+h", "move focus left", func(a *App) { a.focusDirection(Left) }},
+	{[]string{"alt+j"}, "alt+j", "move focus down", func(a *App) { a.focusDirection(Down) }},
+	{[]string{"alt+k"}, "alt+k", "move focus up", func(a *App) { a.focusDirection(Up) }},
+	{[]string{"alt+l"}, "alt+l", "move focus right", func(a *App) { a.focusDirection(Right) }},
 	{[]string{"alt+`"}, "alt+`", "previous pane", func(a *App) { a.setFocus(a.prev) }},
 	{[]string{"alt+n"}, "alt+n", "new session", func(a *App) { _ = a.newPane(layout.Horizontal) }},
 	{[]string{"alt+x"}, "alt+x", "close pane", func(a *App) { _ = a.closePane(a.focus) }},

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"image/color"
 	"strings"
 
@@ -180,11 +181,20 @@ func (a *App) drawPalette(scr uv.Screen) {
 	if len(visible) == 0 {
 		render.Text(scr, r.X+2, r.Y+3, "nothing matches", paletteDim, paletteBg)
 	}
-	for i, e := range visible {
+
+	// One row is kept back to say how many did not fit. A list that silently
+	// stops at the panel edge reads as a complete list, and the entry you were
+	// looking for looks absent rather than below the fold.
+	rows := r.H - 5
+	if rows < 0 {
+		rows = 0
+	}
+	shown := visible
+	if len(shown) > rows {
+		shown = shown[:rows]
+	}
+	for i, e := range shown {
 		y := r.Y + 3 + i
-		if y >= r.Y+r.H-1 {
-			break
-		}
 		bg := color.Color(paletteBg)
 		if i == a.palette.selected {
 			bg = paletteRowBg
@@ -192,5 +202,9 @@ func (a *App) drawPalette(scr uv.Screen) {
 		}
 		render.Text(scr, r.X+2, y, e.label, paletteAccent, bg)
 		render.Text(scr, r.X+18, y, e.desc, paletteFg, bg)
+	}
+	if hidden := len(visible) - len(shown); hidden > 0 {
+		render.Text(scr, r.X+2, r.Y+r.H-2,
+			fmt.Sprintf("%d more — keep typing", hidden), paletteDim, paletteBg)
 	}
 }

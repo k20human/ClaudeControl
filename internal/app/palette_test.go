@@ -1,8 +1,63 @@
 package app
 
 import (
+	"strings"
 	"testing"
+
+	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
+
+	"claudecontrol/internal/layout"
 )
+
+// grid is a uv.Screen the internal tests can draw into and then read back.
+type grid struct {
+	w, h  int
+	cells []uv.Cell
+}
+
+func newGrid(w, h int) *grid {
+	g := &grid{w: w, h: h, cells: make([]uv.Cell, w*h)}
+	for i := range g.cells {
+		g.cells[i] = uv.EmptyCell
+	}
+	return g
+}
+
+func (g *grid) Bounds() uv.Rectangle { return uv.Rect(0, 0, g.w, g.h) }
+
+func (g *grid) CellAt(x, y int) *uv.Cell {
+	if x < 0 || y < 0 || x >= g.w || y >= g.h {
+		return nil
+	}
+	return &g.cells[y*g.w+x]
+}
+
+func (g *grid) SetCell(x, y int, c *uv.Cell) {
+	if x < 0 || y < 0 || x >= g.w || y >= g.h {
+		return
+	}
+	if c == nil {
+		g.cells[y*g.w+x] = uv.EmptyCell
+		return
+	}
+	g.cells[y*g.w+x] = *c
+}
+
+func (g *grid) WidthMethod() uv.WidthMethod { return ansi.GraphemeWidth }
+
+func (g *grid) String() string {
+	var sb strings.Builder
+	for y := 0; y < g.h; y++ {
+		for x := 0; x < g.w; x++ {
+			sb.WriteString(g.cells[y*g.w+x].String())
+		}
+		sb.WriteByte('\n')
+	}
+	return sb.String()
+}
+
+func (g *grid) contains(s string) bool { return strings.Contains(g.String(), s) }
 
 func paletteApp(t *testing.T) *App {
 	t.Helper()
@@ -113,5 +168,47 @@ func TestChoosingNothingRunsNothing(t *testing.T) {
 func TestMatchIsCaseInsensitiveOnBothSides(t *testing.T) {
 	if !matches("ZOOM", "alt+z", "zoom / restore") {
 		t.Error("an upper-case query did not match a lower-case description")
+	}
+}
+
+// Every action the help panel names must be reachable from the palette too.
+// A display-only row — one that describes a keystroke without an action behind
+// it — would be listed in help and missing here.
+func TestHelpAndThePaletteAgree(t *testing.T) {
+	a := paletteApp(t)
+	a.togglePalette()
+
+	inPalette := map[string]bool{}
+	for _, e := range a.paletteEntries() {
+		inPalette[e.label] = true
+	}
+	for _, line := range helpLines() {
+		if line[0] == "" || line[0] == "click" || line[0] == "click again" ||
+			line[0] == "drag a divider" {
+			continue // gestures, not keystrokes
+		}
+		if !inPalette[line[0]] {
+			t.Errorf("help lists %q but the palette cannot reach it", line[0])
+		}
+	}
+}
+
+// A palette that shows only part of its list must say so, or the entry you
+// wanted looks absent rather than below the fold.
+func TestThePaletteSaysWhatItCouldNotShow(t *testing.T) {
+	a := paletteApp(t)
+	a.area = layout.Rect{X: 0, Y: 0, W: 80, H: 12}
+	a.togglePalette()
+
+	r := a.palettePanelRect()
+	rows := r.H - 5
+	if len(a.paletteVisible()) <= rows {
+		t.Skipf("the panel fits all %d entries; nothing to hide", len(a.paletteVisible()))
+	}
+
+	g := newGrid(80, 12)
+	a.drawPalette(g)
+	if !g.contains("more — keep typing") {
+		t.Fatalf("the palette hid entries without saying so:\n%s", g)
 	}
 }
