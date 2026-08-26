@@ -70,6 +70,20 @@ type Sphere struct {
 	dots  []float32
 	t     float64
 	count int
+
+	sparks   []spark
+	sparkRNG *rand.Rand
+}
+
+// spark is a bright point running along a great circle and fading out. It is
+// the visible sign of something having happened — a turn taken, a burst of
+// thinking — and nothing emits one on its own, so a still sphere means a
+// still session rather than an animation that happens to be paused.
+type spark struct {
+	u, v      Vec // an orthonormal pair spanning the circle
+	angle     float64
+	speed     float64
+	age, life float64
 }
 
 // NewSphere builds a sphere. It holds no particles until it is sized.
@@ -80,8 +94,39 @@ func NewSphere(p Params) *Sphere {
 		// More waves from a different seed: the same construction, so it is
 		// still tangent and still divergence-free, but at a finer scale.
 		fine: NewField(p.Seed+9973, 17),
+		// Its own generator, so emitting sparks cannot disturb the particle
+		// layout — which is seeded for reproducibility.
+		sparkRNG: rand.New(rand.NewSource(p.Seed + 31)),
 	}
 }
+
+// MaxSparks bounds how many can be in flight. A burst that outran the fade
+// would paint the sphere solid, and the point is that a trace is noticeable.
+const MaxSparks = 24
+
+// Emit sends n sparks along fresh great circles.
+func (s *Sphere) Emit(n int) {
+	for i := 0; i < n && len(s.sparks) < MaxSparks; i++ {
+		// Any unit vector as the pole of the circle, then any two orthogonal
+		// directions in the plane it defines.
+		axis := Vec{s.sparkRNG.NormFloat64(), s.sparkRNG.NormFloat64(), s.sparkRNG.NormFloat64()}.Unit()
+		u := axis.Cross(Vec{0, 1, 0})
+		if u.Len() < 1e-3 {
+			u = axis.Cross(Vec{1, 0, 0})
+		}
+		u = u.Unit()
+		s.sparks = append(s.sparks, spark{
+			u:     u,
+			v:     axis.Cross(u).Unit(),
+			angle: s.sparkRNG.Float64() * 2 * math.Pi,
+			speed: 1.8 + s.sparkRNG.Float64()*2.2,
+			life:  0.9 + s.sparkRNG.Float64()*0.9,
+		})
+	}
+}
+
+// Sparks is how many are in flight.
+func (s *Sphere) Sparks() int { return len(s.sparks) }
 
 // SetParams replaces the parameters. A changed seed rebuilds the flow.
 func (s *Sphere) SetParams(p Params) {
@@ -204,6 +249,38 @@ func (s *Sphere) Step(dt float64) {
 		}
 		s.splat(cx+q.X*r, cy-q.Y*r, inten)
 	}
+
+	s.stepSparks(dt, cx, cy, r, tilt, spin)
+}
+
+// sparkTail is how many samples behind a spark are drawn. Enough to read as a
+// streak, few enough that a spark is a line and not a smear.
+const sparkTail = 7
+
+// stepSparks advances the sparks and draws each as a short streak.
+func (s *Sphere) stepSparks(dt, cx, cy, r, tilt, spin float64) {
+	live := s.sparks[:0]
+	for _, sp := range s.sparks {
+		sp.angle += sp.speed * dt
+		sp.age += dt
+		if sp.age >= sp.life {
+			continue
+		}
+		// Bright at birth, gone at the end of its life.
+		head := float32(2.6 * (1 - sp.age/sp.life))
+		for k := 0; k < sparkTail; k++ {
+			a := sp.angle - float64(k)*0.05
+			p := sp.u.Scale(math.Cos(a)).Add(sp.v.Scale(math.Sin(a)))
+			q := RotateY(RotateX(p, tilt), spin)
+			// Behind the sphere the streak is occluded, so it dims rather than
+			// showing through.
+			depth := 0.5*q.Z + 0.5
+			fade := head * float32(1-float64(k)/sparkTail) * float32(0.15+0.85*depth)
+			s.splat(cx+q.X*r, cy-q.Y*r, fade)
+		}
+		live = append(live, sp)
+	}
+	s.sparks = live
 }
 
 // clamp01 confines a knob to the range it is documented over, so a value

@@ -236,3 +236,56 @@ func TestScatterBreaksTheFilamentsWithoutLeavingTheSphere(t *testing.T) {
 		t.Errorf("only %d dots are lit; scatter dissolved the sphere instead of stirring it", lit)
 	}
 }
+
+// A spark is the visible sign of something having happened. Nothing emits one
+// on its own, so a still sphere means a still session — and each one has to
+// brighten the sphere while it lives, then be gone.
+func TestASparkBrightensTheSphereThenLeaves(t *testing.T) {
+	const w, h = 60, 60
+	p := holo.DefaultParams()
+	// No trail, so the measurement is of this frame and not of its history.
+	p.Trail = 0
+
+	quiet := holo.NewSphere(p)
+	quiet.Resize(w, h)
+	loud := holo.NewSphere(p)
+	loud.Resize(w, h)
+	loud.Emit(8)
+	if loud.Sparks() != 8 {
+		t.Fatalf("%d sparks in flight, want 8", loud.Sparks())
+	}
+
+	quiet.Step(1.0 / 30)
+	loud.Step(1.0 / 30)
+	if total(loud.Dots()) <= total(quiet.Dots()) {
+		t.Errorf("eight sparks left the sphere no brighter: %.1f against %.1f",
+			total(loud.Dots()), total(quiet.Dots()))
+	}
+
+	// They are short-lived by design; two seconds is longer than any of them.
+	for i := 0; i < 60; i++ {
+		loud.Step(1.0 / 30)
+	}
+	if loud.Sparks() != 0 {
+		t.Errorf("%d sparks still in flight after two seconds", loud.Sparks())
+	}
+}
+
+// A burst larger than the sphere can show must not paint it solid: the point
+// of a trace is that it is noticeable.
+func TestSparksAreBounded(t *testing.T) {
+	s := holo.NewSphere(holo.DefaultParams())
+	s.Resize(40, 40)
+	s.Emit(500)
+	if s.Sparks() > holo.MaxSparks {
+		t.Errorf("%d sparks in flight, more than the %d allowed", s.Sparks(), holo.MaxSparks)
+	}
+}
+
+func total(dots []float32) float64 {
+	var sum float64
+	for _, v := range dots {
+		sum += float64(v)
+	}
+	return sum
+}
