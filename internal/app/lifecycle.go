@@ -32,6 +32,7 @@ func (a *App) newPane(o layout.Orientation) error {
 	}
 	a.root = root
 	a.modules[id] = m
+	a.moduleNames[id] = "claude"
 	a.zoomed = 0
 	a.relayout()
 	a.setFocus(id)
