@@ -84,6 +84,25 @@ func (a *App) handleMouse(ev uv.MouseEvent, m uv.Mouse) {
 
 	a.pointerX, a.pointerY = m.X, m.Y
 
+	// A pane in flight owns the pointer until it lands. Alt is the modifier
+	// because terminals commonly claim shift for selection and ctrl for
+	// links, and a pane is full-bleed guest content — without a modifier every
+	// drag would belong to the guest.
+	if a.paneDrag != nil {
+		a.updatePaneDrag(m.X, m.Y)
+		if _, released := ev.(uv.MouseReleaseEvent); released {
+			a.finishPaneDrag()
+		}
+		return
+	}
+	if _, isClick := ev.(uv.MouseClickEvent); isClick && m.Mod.Contains(uv.ModAlt) {
+		if id := paneAt(a.rects, m.X, m.Y); id != 0 {
+			a.setFocus(id)
+			a.beginPaneDrag(id)
+			return
+		}
+	}
+
 	// A panel takes the whole screen until it is dismissed. Its own buttons
 	// come first; a click anywhere else closes it without acting, which for
 	// the quit confirmation means staying.

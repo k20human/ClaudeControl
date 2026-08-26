@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -62,6 +63,12 @@ type Session struct {
 	cmd  *exec.Cmd
 
 	drainDone chan struct{}
+
+	// termMu makes a resize atomic against the output pump. Resizing has to
+	// read the screen and write it back (see repaintLocked), and the pump
+	// must not slip a chunk in between those two steps — it would be painted
+	// over by the older snapshot.
+	termMu sync.Mutex
 
 	mu       sync.Mutex
 	status   Status
@@ -119,7 +126,11 @@ func (s *Session) pumpOutput() {
 	for {
 		n, err := s.ptmx.Read(buf)
 		if n > 0 {
+			s.termMu.Lock()
 			_, _ = s.Term.Write(buf[:n])
+			s.termMu.Unlock()
+			// onUpdate is called outside the lock: it wakes the UI, and the
+			// UI resizes sessions.
 			if s.onUpdate != nil {
 				s.onUpdate()
 			}
@@ -152,11 +163,50 @@ func (s *Session) Resize(w, h int) error {
 	if w < 1 || h < 1 {
 		return fmt.Errorf("session: bad size %dx%d", w, h)
 	}
+	s.termMu.Lock()
 	s.Term.Resize(w, h)
+	s.repaintLocked()
+	s.termMu.Unlock()
 	if err := pty.Setsize(s.ptmx, &pty.Winsize{Rows: uint16(h), Cols: uint16(w)}); err != nil {
 		return fmt.Errorf("session: resize: %w", err)
 	}
 	return nil
+}
+
+// repaintLocked writes the screen back onto itself so that it is marked as
+// damaged again.
+//
+// Resizing a vt emulator keeps the buffer but drops every damage mark, and
+// Draw only copies lines that are marked. A guest that repaints on SIGWINCH
+// — Claude Code, vim, htop — fills the pane back in immediately; one that has
+// finished writing, such as a command whose output is just sitting there,
+// would leave the pane blank. So the emulator repaints itself from its own
+// snapshot.
+//
+// The clear is what makes this work: writing identical cells back changes
+// nothing, and an unchanged cell is not marked. Erasing first guarantees
+// every line differs. Render separates lines with a bare newline, so each one
+// is positioned explicitly rather than relying on a carriage return, and
+// origin mode is turned off so those positions are absolute.
+//
+// Automatic wrapping is turned off too, and that one is not cosmetic. Painting
+// a line that reaches the last column arms the pending-wrap flag, and x/vt's
+// DECRC restores the saved position without clearing it — so the guest's very
+// next character would drop to the line below, one row off, for ever. With
+// wrapping off the flag is never armed. DECSC/DECRC around the whole sequence
+// hands back the cursor, pen, character set, origin mode and wrap setting.
+//
+// Note that Write is used rather than WriteString: on SafeEmulator only Write
+// takes the lock, WriteString is promoted from the embedded Emulator.
+func (s *Session) repaintLocked() {
+	lines := strings.Split(s.Term.Render(), "\n")
+	var b strings.Builder
+	b.WriteString("\x1b7\x1b[?7l\x1b[?6l\x1b[m\x1b[2J")
+	for i, line := range lines {
+		fmt.Fprintf(&b, "\x1b[%d;1H%s", i+1, line)
+	}
+	b.WriteString("\x1b8")
+	_, _ = s.Term.Write([]byte(b.String()))
 }
 
 // SendKey encodes a key the way this guest asked for it.

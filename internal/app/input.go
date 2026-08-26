@@ -37,11 +37,22 @@ var bindings = []binding{
 	{[]string{"alt+space"}, "alt+space", "sessions", func(a *App) { a.toggleSessionPanel() }},
 	{[]string{"alt+,"}, "alt+,", "settings", func(a *App) { a.toggleSettingsPanel() }},
 	{[]string{"alt+/"}, "alt+/", "command palette", func(a *App) { a.togglePalette() }},
+	// The fallback for a terminal that swallows alt+click, and the way to
+	// start a move without holding a button down. It picks the focused pane
+	// up; the next click, anywhere, chooses where it lands.
+	{[]string{"alt+r"}, "alt+r", "move this pane, then click a target", func(a *App) { a.beginPaneDrag(a.focus) }},
 	{[]string{"alt+g"}, "alt+g", "this panel", func(a *App) { a.overlay = overlayHelp }},
 	{[]string{"alt+q"}, "alt+q", "quit", func(a *App) { a.overlay = overlayQuit }},
 }
 
 func (a *App) handleKey(e uv.KeyPressEvent) {
+	// A pane in flight takes escape, and nothing else: every other key still
+	// reaches the guest, so a drag started by accident costs one keystroke.
+	if a.paneDrag != nil && e.MatchString("esc") {
+		a.cancelPaneDrag()
+		return
+	}
+
 	// The palette takes every keystroke: it is a text field, so a plain letter
 	// has to reach the query rather than an action. Only escape and its own
 	// binding close it.

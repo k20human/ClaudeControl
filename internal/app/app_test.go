@@ -697,3 +697,85 @@ func TestThePaletteRunsAnActionByName(t *testing.T) {
 	}
 	t.Fatal("choosing zoom from the palette did nothing")
 }
+
+// altClick sends an SGR click with the alt bit set. The button byte carries
+// modifiers in its upper bits: 0b0000_1000 is alt.
+func altClick(t *testing.T, s *session.Session, x, y int) {
+	t.Helper()
+	s.SendText(fmt.Sprintf("\x1b[<8;%d;%dM", x+1, y+1))
+	time.Sleep(80 * time.Millisecond)
+}
+
+// drag sends a motion with a button held, which is what the terminal reports
+// between a press and a release.
+func drag(t *testing.T, s *session.Session, x, y int) {
+	t.Helper()
+	s.SendText(fmt.Sprintf("\x1b[<32;%d;%dM", x+1, y+1))
+	time.Sleep(80 * time.Millisecond)
+}
+
+func release(t *testing.T, s *session.Session, x, y int) {
+	t.Helper()
+	s.SendText(fmt.Sprintf("\x1b[<0;%d;%dm", x+1, y+1))
+	time.Sleep(300 * time.Millisecond)
+}
+
+// The gesture end to end. Typing afterwards is the only proof that the tree
+// and the screen agree about where the pane went: a move that updated one and
+// not the other would still look right until the first keystroke.
+func TestAltDraggingAPaneMovesIt(t *testing.T) {
+	const W, H = 80, 16
+	s, snap := run(t, "testdata/two-echo.yaml", W, H)
+	waitForRow(t, snap, 0, "L>")
+	waitForRow(t, snap, 0, "R>")
+
+	// The left guest prompts at column 0, the right one past the divider.
+	before := snap().row(0)
+	leftAt := strings.Index(before, "L>")
+	rightAt := strings.Index(before, "R>")
+	if leftAt < 0 || rightAt < 0 || leftAt >= rightAt {
+		t.Fatalf("row 0 = %q, want L> left of R>", before)
+	}
+
+	// Pick the left pane up and drop it on the right half of the right pane.
+	altClick(t, s, 4, 5)
+	drag(t, s, W-4, 5)
+	waitForAnywhere(t, snap, "▸ right")
+	release(t, s, W-4, 5)
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		row := snap().row(0)
+		l, r := strings.Index(row, "L>"), strings.Index(row, "R>")
+		if l >= 0 && r >= 0 && r < l {
+			// The panes swapped sides. Typing must reach the pane that was
+			// dragged, which kept the focus.
+			s.SendText("Z")
+			waitForRow(t, snap, 0, "L>Z")
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("row 0 = %q; the pane did not move", snap().row(0))
+}
+
+// Escape puts it back down, and the layout is untouched.
+func TestEscapeCancelsAPaneDrag(t *testing.T) {
+	const W, H = 80, 16
+	s, snap := run(t, "testdata/two-echo.yaml", W, H)
+	waitForRow(t, snap, 0, "L>")
+	before := snap().row(0)
+
+	altClick(t, s, 4, 5)
+	drag(t, s, W-4, 5)
+	waitForAnywhere(t, snap, "▸ right")
+	s.SendText("\x1b")
+	time.Sleep(500 * time.Millisecond)
+
+	if anywhere(snap(), "▸ right") {
+		t.Fatal("the preview is still showing after escape")
+	}
+	if got := snap().row(0); got != before {
+		t.Errorf("row 0 = %q after cancelling, want %q", got, before)
+	}
+}

@@ -174,3 +174,63 @@ func TestSessionSendTextReachesTheProcess(t *testing.T) {
 	s.SendText("ping\r")
 	waitFor(t, `"got:ping"`, func() bool { return anyRowContains(s, 30, 5, "got:ping") })
 }
+
+// A resize drops every damage mark in the emulator, and Draw only copies
+// lines that are marked. The guest here writes once and then does nothing, so
+// nothing would bring the text back: the pane would go blank the moment it
+// changed size. The session repaints the screen from its own snapshot to stop
+// that happening.
+func TestResizeKeepsWhatTheGuestAlreadyDrew(t *testing.T) {
+	s, err := session.Start(session.Spec{
+		ID:     "keep",
+		Argv:   []string{"sh", "-c", "printf '\\033[1;32mgreen marker\\033[m'; sleep 30"},
+		Width:  40,
+		Height: 6,
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer s.Close()
+
+	waitFor(t, "the marker", func() bool { return anyRowContains(s, 40, 6, "green marker") })
+
+	for _, size := range [][2]int{{50, 6}, {50, 6}, {24, 6}} {
+		if err := s.Resize(size[0], size[1]); err != nil {
+			t.Fatalf("Resize(%d,%d): %v", size[0], size[1], err)
+		}
+		// Drawn into a fresh grid, so only what the emulator reports as
+		// damaged can appear.
+		if !anyRowContains(s, size[0], size[1], "green marker") {
+			t.Fatalf("the marker vanished after resizing to %dx%d", size[0], size[1])
+		}
+	}
+}
+
+// The repaint paints whole lines, and a line that reaches the last column arms
+// the terminal's pending-wrap flag. x/vt's DECRC restores the saved cursor
+// position without clearing that flag, so a repaint that left it armed would
+// push the guest's next character onto the following row — and every one after
+// it, for the rest of the session. Automatic wrapping is switched off for the
+// repaint to keep the flag from ever being armed.
+func TestResizeLeavesTheCursorWhereTheGuestLeftIt(t *testing.T) {
+	s, err := session.Start(session.Spec{
+		ID:     "cursor",
+		Argv:   []string{"sh", "-c", "printf 'L>'; cat"},
+		Width:  39,
+		Height: 4,
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer s.Close()
+
+	waitFor(t, "the prompt", func() bool { return anyRowContains(s, 39, 4, "L>") })
+	if err := s.Resize(40, 4); err != nil {
+		t.Fatalf("Resize: %v", err)
+	}
+
+	s.SendText("Z")
+	waitFor(t, "the echo next to the prompt", func() bool {
+		return snapshot(s, 40, 4).row(0) == "L>Z"
+	})
+}

@@ -101,6 +101,12 @@ func Leaves(root *Node) []PaneID {
 // is what a user expects when splitting one pane among several. Otherwise the
 // target is wrapped in a new split of two equal children.
 func Split(root *Node, target PaneID, leaf *Node, o Orientation) (*Node, error) {
+	return splitAt(root, target, leaf, o, false)
+}
+
+// splitAt is Split with a say in which side the new leaf lands on. Move needs
+// it; nothing else does, which is why Split keeps the simpler signature.
+func splitAt(root *Node, target PaneID, leaf *Node, o Orientation, before bool) (*Node, error) {
 	if root == nil {
 		return nil, fmt.Errorf("layout: split on an empty tree")
 	}
@@ -121,16 +127,24 @@ func Split(root *Node, target PaneID, leaf *Node, o Orientation) (*Node, error) 
 		if parent.Ratios[index] < 1 {
 			parent.Ratios[index] = 1
 		}
-		parent.Children = insertAt(parent.Children, index+1, leaf)
-		parent.Ratios = insertIntAt(parent.Ratios, index+1, half)
+		at := index + 1
+		if before {
+			at = index
+		}
+		parent.Children = insertAt(parent.Children, at, leaf)
+		parent.Ratios = insertIntAt(parent.Ratios, at, half)
 		return root, nil
 	}
 
+	children := []*Node{node, leaf}
+	if before {
+		children = []*Node{leaf, node}
+	}
 	wrapper := &Node{
 		Kind:        KindSplit,
 		Orientation: o,
 		Ratios:      []int{50, 50},
-		Children:    []*Node{node, leaf},
+		Children:    children,
 	}
 	if parent == nil {
 		return wrapper, nil
@@ -194,3 +208,83 @@ func insertIntAt(s []int, i, v int) []int {
 func removeAt(s []*Node, i int) []*Node { return append(s[:i], s[i+1:]...) }
 
 func removeIntAt(s []int, i int) []int { return append(s[:i], s[i+1:]...) }
+
+// Side is where a pane lands when it is dropped on another.
+type Side int
+
+const (
+	// SideSwap exchanges the two panes without changing the shape of the tree.
+	SideSwap Side = iota
+	// SideLeft puts the moved pane to the left of its target.
+	SideLeft
+	// SideRight puts it to the right.
+	SideRight
+	// SideTop puts it above.
+	SideTop
+	// SideBottom puts it below.
+	SideBottom
+)
+
+func (s Side) String() string {
+	switch s {
+	case SideLeft:
+		return "left"
+	case SideRight:
+		return "right"
+	case SideTop:
+		return "top"
+	case SideBottom:
+		return "bottom"
+	default:
+		return "swap"
+	}
+}
+
+// Move takes the pane src and puts it beside dst, on the given side.
+//
+// Swapping is a separate case rather than a degenerate move: exchanging two
+// ids leaves the arrangement exactly as it was, which is what makes the
+// gesture predictable and its own inverse. Removing and re-inserting would
+// give the same panes a different shape.
+func Move(root *Node, src, dst PaneID, side Side) (*Node, error) {
+	if root == nil {
+		return nil, fmt.Errorf("layout: move in an empty tree")
+	}
+	if src == dst {
+		return root, nil
+	}
+
+	srcNode, _, _ := Find(root, src)
+	if srcNode == nil {
+		return nil, fmt.Errorf("layout: pane %d not found", src)
+	}
+	dstNode, _, _ := Find(root, dst)
+	if dstNode == nil {
+		return nil, fmt.Errorf("layout: pane %d not found", dst)
+	}
+
+	if side == SideSwap {
+		srcNode.PaneID, dstNode.PaneID = dst, src
+		return root, nil
+	}
+
+	next, err := Remove(root, src)
+	if err != nil {
+		return nil, err
+	}
+	if next == nil {
+		return nil, fmt.Errorf("layout: pane %d is the only one; there is nowhere to move it", src)
+	}
+	// Removing src can collapse its parent, so dst is looked up again rather
+	// than carried across: the node survives, its place in the tree may not.
+	if node, _, _ := Find(next, dst); node == nil {
+		return nil, fmt.Errorf("layout: pane %d disappeared while moving %d", dst, src)
+	}
+
+	o := Horizontal
+	if side == SideTop || side == SideBottom {
+		o = Vertical
+	}
+	before := side == SideLeft || side == SideTop
+	return splitAt(next, dst, &Node{Kind: KindLeaf, PaneID: src}, o, before)
+}

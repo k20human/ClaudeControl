@@ -113,3 +113,156 @@ func TestRemoveUnknownPaneIsAnError(t *testing.T) {
 		t.Fatal("Remove(99) = nil error, want an error")
 	}
 }
+
+// Swapping exchanges two panes without touching the shape of the tree. That is
+// what makes it predictable: the arrangement you built stays, only the contents
+// cross over.
+func TestMoveSwapExchangesTwoPanesInPlace(t *testing.T) {
+	root := &Node{
+		Kind:        KindSplit,
+		Orientation: Horizontal,
+		Ratios:      []int{60, 40},
+		Children:    []*Node{leaf(1), leaf(2)},
+	}
+	got, err := Move(root, 1, 2, SideSwap)
+	if err != nil {
+		t.Fatalf("Move: %v", err)
+	}
+	if ids := Leaves(got); len(ids) != 2 || ids[0] != 2 || ids[1] != 1 {
+		t.Fatalf("Leaves = %v, want [2 1]", ids)
+	}
+	if got.Ratios[0] != 60 || got.Ratios[1] != 40 {
+		t.Errorf("Ratios = %v, want the shape untouched", got.Ratios)
+	}
+}
+
+// Doing it again undoes it, which is what lets someone try a swap and change
+// their mind without an undo stack.
+func TestMoveSwapIsItsOwnInverse(t *testing.T) {
+	root := &Node{
+		Kind:        KindSplit,
+		Orientation: Horizontal,
+		Ratios:      []int{1, 1},
+		Children: []*Node{
+			leaf(1),
+			{Kind: KindSplit, Orientation: Vertical, Ratios: []int{1, 1},
+				Children: []*Node{leaf(2), leaf(3)}},
+		},
+	}
+	before := Leaves(root)
+	root, err := Move(root, 1, 3, SideSwap)
+	if err != nil {
+		t.Fatalf("Move: %v", err)
+	}
+	root, err = Move(root, 3, 1, SideSwap)
+	if err != nil {
+		t.Fatalf("Move back: %v", err)
+	}
+	after := Leaves(root)
+	if len(before) != len(after) {
+		t.Fatalf("Leaves = %v, want %v", after, before)
+	}
+	for i := range before {
+		if before[i] != after[i] {
+			t.Fatalf("Leaves = %v, want %v", after, before)
+		}
+	}
+}
+
+// The four sides put the pane beside its target, on the side you dropped it.
+func TestMoveToASidePlacesThePaneThere(t *testing.T) {
+	cases := []struct {
+		side Side
+		want []PaneID // visual order afterwards
+		axis Orientation
+	}{
+		{SideRight, []PaneID{2, 3, 1}, Horizontal},
+		{SideLeft, []PaneID{2, 1, 3}, Horizontal},
+		{SideBottom, []PaneID{2, 3, 1}, Vertical},
+		{SideTop, []PaneID{2, 1, 3}, Vertical},
+	}
+	for _, c := range cases {
+		// 1 and 2 side by side, 3 below them. Pane 1 is moved onto pane 3.
+		root := &Node{
+			Kind: KindSplit, Orientation: Vertical, Ratios: []int{1, 1},
+			Children: []*Node{
+				{Kind: KindSplit, Orientation: Horizontal, Ratios: []int{1, 1},
+					Children: []*Node{leaf(1), leaf(2)}},
+				leaf(3),
+			},
+		}
+		got, err := Move(root, 1, 3, c.side)
+		if err != nil {
+			t.Errorf("Move(%v): %v", c.side, err)
+			continue
+		}
+		ids := Leaves(got)
+		if len(ids) != len(c.want) {
+			t.Errorf("Move(%v) gave %v, want %v", c.side, ids, c.want)
+			continue
+		}
+		for i := range ids {
+			if ids[i] != c.want[i] {
+				t.Errorf("Move(%v) gave %v, want %v", c.side, ids, c.want)
+				break
+			}
+		}
+	}
+}
+
+// Taking a pane out of a two-way split leaves nothing to divide, so the split
+// collapses rather than lingering with one child.
+func TestMovingOutOfATwoWaySplitCollapsesIt(t *testing.T) {
+	root := &Node{
+		Kind: KindSplit, Orientation: Vertical, Ratios: []int{1, 1},
+		Children: []*Node{
+			{Kind: KindSplit, Orientation: Horizontal, Ratios: []int{1, 1},
+				Children: []*Node{leaf(1), leaf(2)}},
+			leaf(3),
+		},
+	}
+	got, err := Move(root, 1, 3, SideRight)
+	if err != nil {
+		t.Fatalf("Move: %v", err)
+	}
+	// Pane 2 was alone in its split; that split must be gone.
+	if got.Children[0].Kind != KindLeaf || got.Children[0].PaneID != 2 {
+		t.Fatalf("first child = %+v, want the surviving leaf 2", got.Children[0])
+	}
+}
+
+func TestMovingAPaneOntoItselfChangesNothing(t *testing.T) {
+	root := &Node{
+		Kind: KindSplit, Orientation: Horizontal, Ratios: []int{1, 1},
+		Children: []*Node{leaf(1), leaf(2)},
+	}
+	for _, side := range []Side{SideSwap, SideLeft, SideRight, SideTop, SideBottom} {
+		got, err := Move(root, 1, 1, side)
+		if err != nil {
+			t.Errorf("Move(%v) onto itself: %v", side, err)
+			continue
+		}
+		if ids := Leaves(got); len(ids) != 2 || ids[0] != 1 || ids[1] != 2 {
+			t.Errorf("Move(%v) onto itself gave %v, want [1 2]", side, ids)
+		}
+	}
+}
+
+func TestMovingTheOnlyPaneIsAnError(t *testing.T) {
+	if _, err := Move(leaf(1), 1, 2, SideRight); err == nil {
+		t.Fatal("moving the only pane was allowed")
+	}
+}
+
+func TestMovingToAnUnknownTargetIsAnError(t *testing.T) {
+	root := &Node{
+		Kind: KindSplit, Orientation: Horizontal, Ratios: []int{1, 1},
+		Children: []*Node{leaf(1), leaf(2)},
+	}
+	if _, err := Move(root, 1, 99, SideRight); err == nil {
+		t.Fatal("moving onto a pane that does not exist was allowed")
+	}
+	if _, err := Move(root, 99, 1, SideRight); err == nil {
+		t.Fatal("moving a pane that does not exist was allowed")
+	}
+}
