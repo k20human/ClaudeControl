@@ -248,6 +248,10 @@ func (a *App) Run() error {
 			_ = a.hooks.Close()
 		}
 		a.stopTranscripts()
+		// Modules first: one that owns processes of its own has to be given
+		// the chance to end them, and only it knows how. Closing the pool
+		// first would leave them running with nothing left to ask.
+		a.closeModules()
 		_ = a.pool.CloseAll()
 		a.bus.Close()
 		a.scr.ExitAltScreen()
@@ -445,6 +449,15 @@ func (a *App) drawCursor(scr uv.Screen) {
 	cell := *c
 	cell.Style.Attrs ^= uv.AttrReverse
 	scr.SetCell(x, y, &cell)
+}
+
+// closeModules releases every module. Panes are closed one at a time as they
+// are removed; this is the other end, when the application itself goes.
+func (a *App) closeModules() {
+	for id, m := range a.modules {
+		_ = m.Close()
+		delete(a.modules, id)
+	}
 }
 
 // handle dispatches one terminal event.

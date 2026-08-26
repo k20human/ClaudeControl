@@ -15,6 +15,7 @@ import (
 	_ "claudecontrol/modules/hologram"
 	_ "claudecontrol/modules/services"
 	_ "claudecontrol/modules/stats"
+	_ "claudecontrol/modules/supervisor"
 	_ "claudecontrol/modules/tasks"
 	_ "claudecontrol/modules/term"
 )

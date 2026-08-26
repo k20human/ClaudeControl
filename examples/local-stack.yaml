@@ -1,0 +1,27 @@
+# A Claude session beside the services it works on.
+# Run with: ./bin/claudecontrol -config examples/local-stack.yaml
+layout:
+  split: horizontal
+  ratios: [3, 2]
+  children:
+    - module: claude
+      options:
+        dir: ~/GolandProjects/ClaudeControl
+    - module: supervisor
+      options:
+        # Seconds a service is given to stop before it is killed. The signal
+        # goes to the whole process group, so `npm run dev` takes the server it
+        # launched with it instead of leaving it holding the port.
+        stop_grace: 5
+        services:
+          # Nothing starts on its own unless autostart says so.
+          - name: api
+            cmd: [npm, run, dev]
+            dir: ~/proj/api
+            env: [PORT=3000]
+          - name: web
+            cmd: [npm, run, dev]
+            dir: ~/proj/web
+            autostart: true
+          - name: redis
+            cmd: [redis-server, --port, 6379]
