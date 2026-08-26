@@ -1,6 +1,7 @@
 package holo_test
 
 import (
+	"math"
 	"testing"
 
 	"claudecontrol/internal/holo"
@@ -131,4 +132,107 @@ func minOf(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// brightRow is the brightness-weighted row of the dot grid: where the light
+// sits, in one number.
+func brightRow(dots []float32, w, h int) float64 {
+	var sum, weighted float64
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			v := float64(dots[y*w+x])
+			sum += v
+			weighted += v * float64(y)
+		}
+	}
+	if sum == 0 {
+		return 0
+	}
+	return weighted / sum
+}
+
+// sweep runs a sphere and reports how far the light travelled up and down.
+func sweep(t *testing.T, p holo.Params, w, h, frames int) float64 {
+	t.Helper()
+	s := holo.NewSphere(p)
+	s.Resize(w, h)
+	lo, hi := math.Inf(1), math.Inf(-1)
+	for i := 0; i < frames; i++ {
+		s.Step(1.0 / 30)
+		if i%15 != 0 {
+			continue
+		}
+		r := brightRow(s.Dots(), w, h)
+		lo, hi = math.Min(lo, r), math.Max(hi, r)
+	}
+	return hi - lo
+}
+
+// The sweeping band is what reads as waiting rather than working: nothing is
+// carried anywhere, the surface is merely swept. Measured over six seconds,
+// the light must travel far enough up and down to be seen as a band rather
+// than as the sphere's own wobble.
+func TestAPulseSweepsABandAcrossTheSphere(t *testing.T) {
+	const w, h, frames = 60, 60, 180
+	base := holo.DefaultParams()
+	still := sweep(t, base, w, h, frames)
+
+	pulsed := base
+	pulsed.Pulse = 1
+	moving := sweep(t, pulsed, w, h, frames)
+
+	if moving < 3*still {
+		t.Errorf("the light travels %.1f rows with a pulse and %.1f without; "+
+			"the band is not distinguishable from the sphere's own wobble", moving, still)
+	}
+}
+
+// Scatter breaks the filaments without letting anything leave the sphere: the
+// particles are still constrained to the surface, they simply stop agreeing
+// about where to go.
+func TestScatterBreaksTheFilamentsWithoutLeavingTheSphere(t *testing.T) {
+	const w, h, frames = 60, 60, 120
+	base := holo.DefaultParams()
+
+	still := holo.NewSphere(base)
+	still.Resize(w, h)
+	loose := base
+	loose.Scatter = 1
+	broken := holo.NewSphere(loose)
+	broken.Resize(w, h)
+	for i := 0; i < frames; i++ {
+		still.Step(1.0 / 30)
+		broken.Step(1.0 / 30)
+	}
+
+	var diff float64
+	for i, v := range still.Dots() {
+		d := float64(v - broken.Dots()[i])
+		diff += d * d
+	}
+	if diff < 10 {
+		t.Errorf("scatter changed the deposits by only %.2f; it is doing nothing", diff)
+	}
+
+	// Still a sphere: every lit dot inside the projected disc, and the sphere
+	// has not gone dark.
+	cx, cy := float64(w)/2, float64(h)/2
+	limit := 0.46*float64(w) + 1.5
+	lit := 0
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			if broken.Dots()[y*w+x] < holo.Threshold {
+				continue
+			}
+			lit++
+			dx, dy := float64(x)-cx, float64(y)-cy
+			if math.Hypot(dx, dy) > limit {
+				t.Fatalf("a dot is lit at (%d,%d), %.1f from the centre; the limit is %.1f",
+					x, y, math.Hypot(dx, dy), limit)
+			}
+		}
+	}
+	if lit < 50 {
+		t.Errorf("only %d dots are lit; scatter dissolved the sphere instead of stirring it", lit)
+	}
 }
