@@ -5,6 +5,7 @@ package term
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"sync/atomic"
 
@@ -94,11 +95,24 @@ func (m *Module) Resize(w, h int) error {
 		}
 		m.sess = s
 		if m.ctx.Pool != nil {
-			m.ctx.Pool.Add(s, m.argv[0], m.dir)
+			m.ctx.Pool.Add(s, m.title(), m.dir)
+			// Marking it attached is not decoration: the list distinguishes a
+			// session on screen from one running in the background, and a pane
+			// that adds without attaching makes the list say the opposite of
+			// what is true.
+			m.ctx.Pool.SetAttached(s.ID, true)
 		}
 		return nil
 	}
 	return m.sess.Resize(w, h)
+}
+
+// title is what the sessions list shows. The pane number is part of it because
+// several panes commonly run the same command in the same directory, and rows
+// nobody can tell apart are rows nobody can act on.
+func (m *Module) title() string {
+	name := filepath.Base(m.argv[0])
+	return name + " " + strconv.FormatUint(uint64(m.ctx.PaneID), 10)
 }
 
 // Draw paints the emulated screen into area.
