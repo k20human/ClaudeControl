@@ -571,3 +571,36 @@ func waitForSocket(t *testing.T, dir string) string {
 	t.Fatalf("no hook socket appeared in %s", dir)
 	return ""
 }
+
+// The hologram has to appear beside a live session without disturbing it. A
+// braille glyph is the evidence; the session next to it must still take
+// typing.
+func TestHologramDrawsBesideALiveSession(t *testing.T) {
+	const W, H = 90, 24
+	s, snap := run(t, "testdata/hologram.yaml", W, H)
+	waitForRow(t, snap, 0, "P>")
+
+	deadline := time.Now().Add(10 * time.Second)
+	var found bool
+	for time.Now().Before(deadline) && !found {
+		g := snap()
+		for y := 0; y < H-1 && !found; y++ {
+			for _, r := range g.row(y) {
+				if r >= 0x2801 && r <= 0x28FF {
+					found = true
+					break
+				}
+			}
+		}
+		if !found {
+			time.Sleep(50 * time.Millisecond)
+		}
+	}
+	if !found {
+		t.Fatal("no braille glyph appeared; the hologram is not drawing")
+	}
+
+	// The session next to it is untouched.
+	s.SendText("A")
+	waitForRow(t, snap, 0, "P>A")
+}
