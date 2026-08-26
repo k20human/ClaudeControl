@@ -60,11 +60,11 @@ type App struct {
 	panelButtons []button
 	sessionPanel selector
 
-	// barCount is the label between the status-bar buttons and quit, and
-	// barCountX where it starts. Both are settled during layout so drawing and
-	// hit-testing cannot disagree about where anything is.
-	barCount  string
+	// barCountX and barCountW are the slot between the status-bar buttons and
+	// quit. The slot is settled during layout so nothing can grow into a
+	// button; what it holds is decided when the bar is drawn.
 	barCountX int
+	barCountW int
 
 	// pointerX and pointerY are the last reported pointer position, so a panel
 	// button can light up under it the way a status-bar button does.

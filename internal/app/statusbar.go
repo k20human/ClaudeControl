@@ -63,12 +63,13 @@ func (a *App) buildStatusBar() []button {
 	quitW := ansi.StringWidth(quit) + 2
 	quitX := a.area.W - quitW - 1
 
-	a.barCount = a.countLabel()
-	a.barCountX = quitX - 2 - ansi.StringWidth(a.barCount)
+	// Space is reserved for the widest label this can ever hold, not for the
+	// one showing now. The label changes with session state, which does not
+	// disturb the layout — so reserving the current width would let a longer
+	// one grow into a button.
+	a.barCountW = ansi.StringWidth("99 waiting")
+	a.barCountX = quitX - 2 - a.barCountW
 	limit := a.barCountX - 1
-	if a.barCount == "" {
-		limit = quitX - 1
-	}
 
 	x := 1
 	for _, it := range items {
@@ -94,8 +95,6 @@ func (a *App) buildStatusBar() []button {
 			run:   func(a *App) { a.overlay = overlayQuit },
 			warn:  true,
 		})
-	} else {
-		a.barCount = ""
 	}
 	return out
 }
@@ -130,8 +129,12 @@ func (a *App) drawStatusBar(scr uv.Screen) {
 	}
 
 	// Pane count, right of the buttons and left of quit.
-	if a.barCount != "" && a.barCountX > 0 {
-		render.Text(scr, a.barCountX, y, a.barCount, barCountFg, barBg)
+	// Computed here rather than at layout time: a hook changes what this says
+	// without changing the shape of anything, and a label settled during
+	// layout would never notice.
+	if label := a.countLabel(); a.barCountX > 0 {
+		x := a.barCountX + a.barCountW - ansi.StringWidth(label)
+		render.Text(scr, x, y, label, barCountFg, barBg)
 	}
 }
 

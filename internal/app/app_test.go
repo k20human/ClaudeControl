@@ -499,3 +499,75 @@ func TestSessionPanelOpensFromTheStatusBar(t *testing.T) {
 	s.SendText("A")
 	waitForRow(t, snap, 0, "P>A")
 }
+
+// The whole point of the hook bridge: a session that needs an answer says so,
+// and the status bar shows it without anyone having to look at that pane.
+//
+// Claude Code is not involved. The hook command is our own binary, so the
+// chain — socket, environment variable, payload, state mapping, status bar —
+// can be exercised by invoking it exactly the way Claude Code would.
+func TestAHookMarksASessionAsWaiting(t *testing.T) {
+	const W, H = 90, 14
+	runtimeDir := t.TempDir()
+	bin := build(t)
+
+	s, err := session.Start(session.Spec{
+		ID:   "claudecontrol",
+		Argv: []string{bin, "-config", "testdata/one-pane.yaml"},
+		Dir:  ".",
+		Env: []string{
+			"XDG_STATE_HOME=" + t.TempDir(),
+			"XDG_RUNTIME_DIR=" + runtimeDir,
+		},
+		Width:  W,
+		Height: H,
+	})
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	snap := func() *screen {
+		g := newScreen(W, H)
+		s.Term.Draw(g, uv.Rect(0, 0, W, H))
+		return g
+	}
+
+	waitForRow(t, snap, 0, "P>")
+	waitForRow(t, snap, H-1, "1 pane")
+
+	socket := waitForSocket(t, runtimeDir)
+
+	// A term pane names its session after the pane it lives in.
+	cmd := exec.Command(bin, "--hook", "Notification")
+	cmd.Env = append(os.Environ(), "CLAUDECONTROL_HOOK_SOCKET="+socket)
+	cmd.Stdin = strings.NewReader(`{"session_id":"pane-1-1","cwd":"/tmp"}`)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("hook: %v\n%s", err, out)
+	}
+
+	waitForRow(t, snap, H-1, "1 waiting")
+
+	// And a Stop takes it back to quiet.
+	cmd = exec.Command(bin, "--hook", "Stop")
+	cmd.Env = append(os.Environ(), "CLAUDECONTROL_HOOK_SOCKET="+socket)
+	cmd.Stdin = strings.NewReader(`{"session_id":"pane-1-1"}`)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("hook: %v\n%s", err, out)
+	}
+	waitForRow(t, snap, H-1, "1 pane")
+}
+
+// waitForSocket waits for the application to open its hook socket.
+func waitForSocket(t *testing.T, dir string) string {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		matches, _ := filepath.Glob(filepath.Join(dir, "claudecontrol-*.sock"))
+		if len(matches) > 0 {
+			return matches[0]
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("no hook socket appeared in %s", dir)
+	return ""
+}
