@@ -289,6 +289,7 @@ func (a *App) relayout() {
 		}
 		_ = m.Resize(r.W, r.H)
 	}
+	a.saveSnapshot()
 }
 
 // draw paints every visible pane, then the chrome, then places the cursor.

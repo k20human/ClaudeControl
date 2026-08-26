@@ -12,6 +12,7 @@ import (
 
 func dragApp(t *testing.T, w, h int) *App {
 	t.Helper()
+	isolateState(t)
 	a := &App{
 		root: &layout.Node{
 			Kind:        layout.KindSplit,

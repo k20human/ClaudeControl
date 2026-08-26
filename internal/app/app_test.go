@@ -79,9 +79,13 @@ func build(t *testing.T) string {
 func run(t *testing.T, cfg string, w, h int) (*session.Session, func() *screen) {
 	t.Helper()
 	s, err := session.Start(session.Spec{
-		ID:     "claudecontrol",
-		Argv:   []string{build(t), "-config", cfg},
-		Dir:    ".",
+		ID:   "claudecontrol",
+		Argv: []string{build(t), "-config", cfg},
+		Dir:  ".",
+		// The application records its panes on every layout change. Pointed at
+		// a temporary directory so a test run never touches the state of the
+		// person running it.
+		Env:    []string{"XDG_STATE_HOME=" + t.TempDir()},
 		Width:  w,
 		Height: h,
 	})

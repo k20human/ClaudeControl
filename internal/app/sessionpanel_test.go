@@ -9,7 +9,8 @@ import (
 	"claudecontrol/internal/pool"
 )
 
-func panelApp() *App {
+func panelApp(t *testing.T) *App {
+	isolateState(t)
 	b := bus.New()
 	return &App{
 		root:     &layout.Node{Kind: layout.KindLeaf, PaneID: 1},
@@ -30,7 +31,7 @@ func panelApp() *App {
 }
 
 func TestToggleSessionPanelIsReversible(t *testing.T) {
-	a := panelApp()
+	a := panelApp(t)
 	if a.sessionPanel != nil {
 		t.Fatal("the panel is open before anything asked for it")
 	}
@@ -47,7 +48,7 @@ func TestToggleSessionPanelIsReversible(t *testing.T) {
 // The panel is a view, not a pane: opening it must not disturb the layout the
 // user arranged.
 func TestTheSessionPanelDoesNotTouchTheLayout(t *testing.T) {
-	a := panelApp()
+	a := panelApp(t)
 	before := layout.Leaves(a.root)
 	a.toggleSessionPanel()
 	if got := layout.Leaves(a.root); len(got) != len(before) {
