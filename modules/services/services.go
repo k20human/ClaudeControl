@@ -174,16 +174,25 @@ func toFloat(v any) (float64, bool) {
 	return 0, false
 }
 
+// toStrings reads a command line from the configuration.
+//
+// Scalars are converted rather than refused. YAML reads a bare true as a
+// boolean and a bare 6379 as a number, so "cmd: [true]" and
+// "cmd: [redis-cli, ping, 6379]" would otherwise fail for a reason that has
+// nothing to do with what the user wrote. An argument is text by nature.
 func toStrings(v any) ([]string, bool) {
 	switch list := v.(type) {
 	case []any:
 		out := make([]string, 0, len(list))
 		for _, item := range list {
-			s, ok := item.(string)
-			if !ok {
+			switch s := item.(type) {
+			case string:
+				out = append(out, s)
+			case bool, int, int64, float64:
+				out = append(out, fmt.Sprintf("%v", s))
+			default:
 				return nil, false
 			}
-			out = append(out, s)
 		}
 		return out, true
 	case []string:

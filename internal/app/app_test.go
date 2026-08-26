@@ -650,3 +650,50 @@ func TestSettingsMenuAdjustsAndSaves(t *testing.T) {
 		t.Errorf("the slider did not change anything:\n%s", out)
 	}
 }
+
+// The control centre in one screen: a live session, service verdicts, and a
+// task listed in a pane of its own.
+func TestServicesAndTasksAppearBesideASession(t *testing.T) {
+	const W, H = 100, 24
+	_, snap := run(t, "testdata/control-centre.yaml", W, H)
+	waitForRow(t, snap, 0, "P>")
+
+	// Both verdicts, so a failing check is visibly different from a passing one.
+	waitForAnywhere(t, snap, "always-up")
+	waitForAnywhere(t, snap, "always-down")
+	waitForAnywhere(t, snap, "up")
+	waitForAnywhere(t, snap, "down")
+
+	// The task is listed before it is run.
+	waitForAnywhere(t, snap, "greet")
+}
+
+// The palette has to reach an action by name, which is the point of having one.
+func TestThePaletteRunsAnActionByName(t *testing.T) {
+	const W, H = 100, 24
+	s, snap := run(t, "testdata/control-centre.yaml", W, H)
+	waitForRow(t, snap, 0, "P>")
+	waitForAnywhere(t, snap, "always-up")
+
+	bar := waitForRow(t, snap, H-1, "cmd").row(H - 1)
+	click(t, s, columnOf(bar, "cmd"), H-1)
+	waitForAnywhere(t, snap, "command palette")
+
+	// Type enough to single out zoom, then take it.
+	for _, ch := range []string{"z", "o", "o", "m"} {
+		s.SendText(ch)
+		time.Sleep(80 * time.Millisecond)
+	}
+	waitForAnywhere(t, snap, "zoom / restore")
+	s.SendText("\r")
+
+	// Zoomed, the focused session fills the screen, so the services pane goes.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if !anywhere(snap(), "always-up") {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatal("choosing zoom from the palette did nothing")
+}

@@ -1,0 +1,22 @@
+layout:
+  split: horizontal
+  ratios: [2, 1]
+  children:
+    - module: term
+      options: { cmd: [sh, -c, "printf 'P>'; cat"] }
+    - split: vertical
+      ratios: [1, 1]
+      children:
+        - module: services
+          options:
+            interval: 1
+            checks:
+              - name: always-up
+                cmd: [true]
+              - name: always-down
+                cmd: [false]
+        - module: tasks
+          options:
+            tasks:
+              - name: greet
+                cmd: [sh, -c, "printf TASK-RAN"]

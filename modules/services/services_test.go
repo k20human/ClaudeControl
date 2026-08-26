@@ -92,3 +92,19 @@ func TestAnIncompleteCheckIsAnError(t *testing.T) {
 		}
 	}
 }
+
+// YAML reads a bare true as a boolean and a bare port as a number, so a
+// command line written the obvious way must still work.
+func TestABareScalarInACommandIsAccepted(t *testing.T) {
+	m, err := module.New("services", map[string]any{
+		"checks": []any{
+			map[string]any{"name": "bare", "cmd": []any{"sh", "-c", true, 8080}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("module.New: %v", err)
+	}
+	if m == nil {
+		t.Fatal("no module was built")
+	}
+}
