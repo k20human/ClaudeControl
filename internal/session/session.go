@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
@@ -47,6 +48,13 @@ type Spec struct {
 	// callback installed afterwards would miss it — leaving that output on the
 	// emulator with nothing to trigger a repaint.
 	OnUpdate func()
+
+	// Configure runs against the emulator after it is built and before
+	// anything is written to it. That is the only safe moment: several of the
+	// emulator's setters — SetCallbacks among them — are promoted from the
+	// unguarded type, so reaching for them once the pump is running is a race
+	// whatever the caller does.
+	Configure func(vt.Terminal)
 }
 
 // Session is a hosted process plus the emulator that interprets its output.
@@ -106,6 +114,10 @@ func Start(sp Spec) (*Session, error) {
 		ptmx:      ptmx,
 		cmd:       cmd,
 		drainDone: make(chan struct{}),
+	}
+
+	if sp.Configure != nil {
+		sp.Configure(s.Term)
 	}
 
 	// Process output feeds the emulator.
@@ -227,6 +239,47 @@ func (s *Session) Status() (Status, int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.status, s.exitCode
+}
+
+// Pid is the process id, or zero once it is gone.
+func (s *Session) Pid() int {
+	if s.cmd.Process == nil {
+		return 0
+	}
+	return s.cmd.Process.Pid
+}
+
+// Terminate asks the process to stop, and insists after grace has passed.
+//
+// The signal goes to the whole process group, not to the child alone. A PTY is
+// started with its own session, so the child leads a group its own children
+// join — and `npm run dev` is a launcher whose real server is one of those
+// children. Signalling only the child leaves the server holding its port,
+// which is the failure that makes a supervisor useless.
+//
+// SIGTERM first because a development server asked politely closes its sockets
+// and removes its lockfiles; SIGKILL after, because one that ignores the
+// request must still go.
+func (s *Session) Terminate(grace time.Duration) error {
+	pid := s.Pid()
+	if pid <= 0 {
+		return nil
+	}
+	if err := syscall.Kill(-pid, syscall.SIGTERM); err != nil {
+		// Already gone, or never a group leader: fall back on the blunt path
+		// rather than leaving it running.
+		return s.Close()
+	}
+
+	deadline := time.Now().Add(grace)
+	for time.Now().Before(deadline) {
+		if st, _ := s.Status(); st == Exited {
+			return s.Close()
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	_ = syscall.Kill(-pid, syscall.SIGKILL)
+	return s.Close()
 }
 
 // Close kills the process and releases the PTY. It is idempotent.

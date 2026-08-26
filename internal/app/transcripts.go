@@ -6,15 +6,6 @@ import (
 	"claudecontrol/internal/transcript"
 )
 
-// UsageTopic is where per-session metrics are published.
-const UsageTopic = "session.usage"
-
-// SessionMetrics ties a turn's metrics to the session that produced them.
-type SessionMetrics struct {
-	SessionID string
-	Metrics   transcript.Metrics
-}
-
 // followTranscript starts following a session's transcript, once.
 //
 // A hook fires several times a turn and carries the same path every time, so
@@ -39,12 +30,31 @@ func (a *App) followTranscript(sessionID, path string) {
 	windows := transcript.DefaultWindows()
 	go func() {
 		for line := range tl.Lines() {
+			if line.AITitle != "" {
+				a.usageMu.Lock()
+				if a.names == nil {
+					a.names = make(map[string]string)
+				}
+				a.names[sessionID] = line.AITitle
+				a.usageMu.Unlock()
+				a.bus.PublishState(transcript.NameTopic, transcript.SessionName{
+					SessionID: sessionID, Name: line.AITitle,
+				})
+				a.Wake()
+			}
 			if line.Type != "assistant" {
 				continue
 			}
-			a.bus.PublishState(UsageTopic, SessionMetrics{
+			m := transcript.Derive(line.Model, line.Usage, windows)
+			a.usageMu.Lock()
+			if a.usage == nil {
+				a.usage = make(map[string]transcript.Metrics)
+			}
+			a.usage[sessionID] = m
+			a.usageMu.Unlock()
+			a.bus.PublishState(transcript.SessionTopic, transcript.SessionMetrics{
 				SessionID: sessionID,
-				Metrics:   transcript.Derive(line.Model, line.Usage, windows),
+				Metrics:   m,
 			})
 			a.Wake()
 		}

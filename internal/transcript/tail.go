@@ -28,11 +28,17 @@ type Line struct {
 	Type  string
 	Model string
 	Usage Usage
+
+	// AITitle is the name Claude Code gave the session. It arrives on its own
+	// line type, not with a turn, and it is what a person recognises the
+	// session by — the directory name only says where it runs.
+	AITitle string
 }
 
 // raw mirrors the parts of the on-disk shape that are read.
 type raw struct {
 	Type    string `json:"type"`
+	AITitle string `json:"aiTitle"`
 	Message struct {
 		Model string `json:"model"`
 		Usage struct {
@@ -158,5 +164,5 @@ func parse(b []byte) (Line, bool) {
 	}
 	u := r.Message.Usage.Usage
 	u.Thinking = r.Message.Usage.Details.Thinking
-	return Line{Type: r.Type, Model: r.Message.Model, Usage: u}, true
+	return Line{Type: r.Type, Model: r.Message.Model, Usage: u, AITitle: r.AITitle}, true
 }

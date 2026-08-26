@@ -156,6 +156,11 @@ func (m *Module) Resize(w, h int) error {
 
 // title is the short name the sessions list shows: the last element of the
 // working directory, which is what tells two sessions apart at a glance.
+// Title names the pane after the directory the session runs in. The
+// application replaces it with the name Claude Code gave the session once one
+// has been seen, which is what a person recognises it by.
+func (m *Module) Title() (string, bool) { return m.title(), true }
+
 func (m *Module) title() string {
 	if base := filepath.Base(m.dir); base != "" && base != "." && base != "/" {
 		return base

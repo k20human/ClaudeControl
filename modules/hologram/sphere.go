@@ -7,6 +7,7 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 
 	"claudecontrol/internal/holo"
+	"claudecontrol/internal/pool"
 	"claudecontrol/internal/render"
 )
 
@@ -19,10 +20,21 @@ type sphereRenderer struct {
 	sig    Signal
 	cols   int
 	rows   int
+
+	// cur eases towards want, so a change of state is something you watch
+	// happen rather than something that has already happened.
+	cur  mood
+	want mood
 }
 
 func newSphere(p holo.Params) Renderer {
-	return &sphereRenderer{base: p, sphere: holo.NewSphere(p)}
+	start := moodFor(pool.StateIdle.String())
+	return &sphereRenderer{
+		base:   p,
+		sphere: holo.NewSphere(start.apply(p)),
+		cur:    start,
+		want:   start,
+	}
 }
 
 func (s *sphereRenderer) Resize(cols, rows int) {
@@ -31,7 +43,15 @@ func (s *sphereRenderer) Resize(cols, rows int) {
 	s.sphere.Resize(w, h)
 }
 
-func (s *sphereRenderer) Step(dt float64) { s.sphere.Step(dt) }
+func (s *sphereRenderer) Step(dt float64) {
+	s.cur = s.cur.ease(s.want, dt)
+	s.sphere.SetParams(s.cur.apply(s.base))
+	s.sphere.Step(dt)
+}
+
+// Emit shows a burst: a handful of sparks running the sphere. Nothing calls
+// this on a timer, so the panel is quiet exactly when the sessions are.
+func (s *sphereRenderer) Emit(n int) { s.sphere.Emit(n) }
 
 // Params returns the parameters as configured, before any signal is applied.
 func (s *sphereRenderer) Params() holo.Params { return s.base }
@@ -45,14 +65,16 @@ func (s *sphereRenderer) SetParams(p holo.Params) {
 
 // SetSignal maps what the sessions are doing onto the animation.
 //
-// Rotation follows how many sessions are working, so a busy machine visibly
-// turns faster. The mapping is deliberately gentle: the panel should read as
-// alive, not as an alarm.
+// The state chooses the mood — how the sphere moves at all — and the number of
+// working sessions then adds to its rotation, so a busy machine turns faster
+// within the same character. Nothing is applied here: Step eases towards it,
+// because a mood that arrived instantly would read as a cut rather than as a
+// change of mind.
 func (s *sphereRenderer) SetSignal(sig Signal) {
 	s.sig = sig
-	p := s.base
-	p.Rotation = s.base.Rotation * (1 + 0.5*float64(sig.Active))
-	s.sphere.SetParams(p)
+	m := moodFor(sig.Worst)
+	m.rotation *= 1 + 0.4*float64(sig.Active)
+	s.want = m
 }
 
 func (s *sphereRenderer) Draw(scr uv.Screen, area uv.Rectangle) {

@@ -1,7 +1,11 @@
 package session_test
 
 import (
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -233,4 +237,53 @@ func TestResizeLeavesTheCursorWhereTheGuestLeftIt(t *testing.T) {
 	waitFor(t, "the echo next to the prompt", func() bool {
 		return snapshot(s, 40, 4).row(0) == "L>Z"
 	})
+}
+
+// A development server is usually a launcher: `npm run dev` starts the real
+// server as a child. Signalling only the child leaves that server holding its
+// port, which is the failure that makes a supervisor useless — so the whole
+// process group has to go.
+func TestTerminateTakesTheWholeProcessGroup(t *testing.T) {
+	dir := t.TempDir()
+	marker := filepath.Join(dir, "child.pid")
+	// The shell writes its child's pid and then waits, exactly as a launcher
+	// would.
+	s, err := session.Start(session.Spec{
+		ID:     "group",
+		Argv:   []string{"sh", "-c", "sleep 300 & echo $! > " + marker + "; wait"},
+		Width:  40,
+		Height: 6,
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer s.Close()
+
+	var child int
+	waitFor(t, "the child's pid", func() bool {
+		raw, err := os.ReadFile(marker)
+		if err != nil {
+			return false
+		}
+		child, err = strconv.Atoi(strings.TrimSpace(string(raw)))
+		return err == nil && child > 0
+	})
+	if !alive(child) {
+		t.Fatalf("the child %d was never running", child)
+	}
+
+	if err := s.Terminate(2 * time.Second); err != nil {
+		t.Fatalf("Terminate: %v", err)
+	}
+	waitFor(t, "the child to go", func() bool { return !alive(child) })
+}
+
+// alive reports whether a pid still exists. Signal zero performs no signal but
+// still checks that the process is there.
+func alive(pid int) bool {
+	p, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	return p.Signal(syscall.Signal(0)) == nil
 }

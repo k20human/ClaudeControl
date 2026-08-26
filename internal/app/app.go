@@ -40,6 +40,12 @@ type App struct {
 	tailerMu sync.Mutex
 	tailers  map[string]*transcript.Tailer
 
+	// usage is the last turn seen for each session, kept here so a pane title
+	// can show it without subscribing to the bus per pane.
+	usageMu sync.RWMutex
+	usage   map[string]transcript.Metrics
+	names   map[string]string
+
 	// binary is our own executable, which sessions invoke in --hook mode.
 	binary string
 
@@ -87,6 +93,14 @@ type App struct {
 	// button; what it holds is decided when the bar is drawn.
 	barCountX int
 	barCountW int
+
+	// barUsageX and barUsageW are the slot for the account budget, reserved
+	// only while some pane is fetching one.
+	barUsageX int
+	barUsageW int
+
+	// barUsageForm is which of usageForms the reserved slot can hold.
+	barUsageForm int
 
 	// pointerX and pointerY are the last reported pointer position, so a panel
 	// button can light up under it the way a status-bar button does.
@@ -213,6 +227,12 @@ func (a *App) Run() error {
 
 	a.scr.EnterAltScreen()
 	a.scr.HideCursor()
+	// The hardware cursor stays hidden for good: the cursor is painted into
+	// the cell by drawCursor. Mode 2026 makes each frame atomic, which is
+	// what keeps an animated pane from tearing, and it also spares the
+	// terminal the hide/show pair ultraviolet otherwise brackets every frame
+	// with. Terminals that do not know the mode ignore it.
+	a.scr.SetSynchronizedUpdates(true)
 	// Full motion tracking. It costs one event per hovered cell, which is the
 	// price of highlighting a divider before the pointer is pressed; repaints
 	// are coalesced and only a couple of cells ever change.
@@ -228,6 +248,10 @@ func (a *App) Run() error {
 			_ = a.hooks.Close()
 		}
 		a.stopTranscripts()
+		// Modules first: one that owns processes of its own has to be given
+		// the chance to end them, and only it knows how. Closing the pool
+		// first would leave them running with nothing left to ask.
+		a.closeModules()
 		_ = a.pool.CloseAll()
 		a.bus.Close()
 		a.scr.ExitAltScreen()
@@ -247,6 +271,13 @@ func (a *App) Run() error {
 	ticker := time.NewTicker(redrawInterval)
 	defer ticker.Stop()
 
+	// A countdown is computed when it is drawn, and nothing else on a still
+	// screen asks for a redraw. Without this the "refills in" figure would sit
+	// unchanged until the next reading — up to three minutes wrong, which is
+	// worse than a coarser unit honestly kept.
+	countdown := time.NewTicker(time.Minute)
+	defer countdown.Stop()
+
 	dirty := true
 	for !a.quit {
 		select {
@@ -258,6 +289,12 @@ func (a *App) Run() error {
 			dirty = true
 		case <-a.wake:
 			dirty = true
+		case <-countdown.C:
+			// Armed, never cleared: whatever else asked for a redraw still
+			// gets one.
+			if a.hasAccountSource() {
+				dirty = true
+			}
 		case <-ticker.C:
 			if !dirty {
 				continue
@@ -310,15 +347,15 @@ func (a *App) relayout() {
 		if !ok {
 			continue
 		}
-		// Resize only on a real size change. Resizing a vt emulator drops its
-		// damage marks, and Draw copies nothing for a row it does not consider
-		// damaged — so a redundant resize blanks a pane until its guest writes
-		// again. A genuine resize has the same effect, but there the guest gets
-		// a SIGWINCH and repaints itself.
+		// Resize only on a real size change. It is not free: resizing a vt
+		// emulator drops its damage marks, which costs the session a full
+		// repaint of itself (see session.Resize), and costs the guest a
+		// SIGWINCH it may act on.
 		if prev, had := old[id]; had && prev.W == r.W && prev.H == r.H {
 			continue
 		}
-		_ = m.Resize(r.W, r.H)
+		c := shrinkTop(r, a.paneTitleH(id))
+		_ = m.Resize(c.W, c.H)
 	}
 	a.saveSnapshot()
 }
@@ -339,17 +376,19 @@ func (a *App) draw() {
 			}
 		}
 	}
-	for id, r := range a.rects {
+	for id := range a.rects {
 		m, ok := a.modules[id]
 		if !ok {
 			continue
 		}
-		area := uv.Rect(r.X, r.Y, r.W, r.H)
+		c := a.contentRect(id)
+		area := uv.Rect(c.X, c.Y, c.W, c.H)
 		m.Draw(a.scr, area)
 		if code, dead := a.exitedCode(id); dead {
 			exitedBanner(a.scr, area, code)
 		}
 	}
+	a.drawPaneTitles(a.scr)
 	drawDividers(a.scr, a.rects, a.divs, a.focus, a.hoverDiv)
 	a.drawStatusBar(a.scr)
 	a.drawSessionPanel(a.scr)
@@ -357,19 +396,67 @@ func (a *App) draw() {
 	a.drawPaneDrag(a.scr)
 	a.drawPalette(a.scr)
 	a.drawOverlay(a.scr)
+	a.drawCursor(a.scr)
+}
 
-	a.scr.HideCursor()
+// cursorTarget is where the cursor belongs this frame, in screen coordinates,
+// and whether it belongs anywhere at all. A panel covers the panes, so while
+// one is open the cursor has no business being shown.
+func (a *App) cursorTarget() (x, y int, visible bool) {
 	if a.overlay != overlayNone || a.sessionPanel != nil || a.settingsPanel != nil || a.palette != nil {
+		return 0, 0, false
+	}
+	m, ok := a.modules[a.focus]
+	if !ok {
+		return 0, 0, false
+	}
+	c, ok := m.(module.Cursorer)
+	if !ok {
+		return 0, 0, false
+	}
+	cx, cy, visible := c.Cursor()
+	if !visible {
+		return 0, 0, false
+	}
+	r := a.contentRect(a.focus)
+	return r.X + cx, r.Y + cy, true
+}
+
+// drawCursor paints the cursor into the cell instead of asking the terminal
+// for its own.
+//
+// The hardware cursor cannot be used here. Ultraviolet emits the cursor move
+// at the head of a frame's byte stream and the cell repainting after it, so
+// whatever the application asks for is overwritten by the paint that follows —
+// harmless for a still screen, but a pane that animates repaints every frame
+// and the cursor was measured parked in the hologram, sixty times a second,
+// never once where it was asked to be.
+//
+// Reversing the cell is under our control, lands exactly where the guest put
+// its cursor, and costs nothing. The trade is that it does not blink and is
+// always a block, whatever shape the guest asked for. The attribute is
+// toggled rather than set so that a cursor sitting on already-reversed text
+// still stands out.
+func (a *App) drawCursor(scr uv.Screen) {
+	x, y, visible := a.cursorTarget()
+	if !visible {
 		return
 	}
-	if m, ok := a.modules[a.focus]; ok {
-		if c, ok := m.(module.Cursorer); ok {
-			if x, y, visible := c.Cursor(); visible {
-				r := a.rects[a.focus]
-				a.scr.SetCursorPosition(r.X+x, r.Y+y)
-				a.scr.ShowCursor()
-			}
-		}
+	c := scr.CellAt(x, y)
+	if c == nil {
+		return
+	}
+	cell := *c
+	cell.Style.Attrs ^= uv.AttrReverse
+	scr.SetCell(x, y, &cell)
+}
+
+// closeModules releases every module. Panes are closed one at a time as they
+// are removed; this is the other end, when the application itself goes.
+func (a *App) closeModules() {
+	for id, m := range a.modules {
+		_ = m.Close()
+		delete(a.modules, id)
 	}
 }
 

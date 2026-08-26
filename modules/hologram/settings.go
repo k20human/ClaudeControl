@@ -23,6 +23,13 @@ func (m *Module) Settings() []settings.Setting {
 		Choices: []string{"sphere", "ring", "avatar"},
 		Get:     func() any { return m.style },
 		Set:     func(v any) error { return m.setStyle(v.(string)) },
+	}, {
+		Key:     "readout",
+		Label:   "text column",
+		Kind:    settings.KindChoice,
+		Choices: []string{"right", "left", "off"},
+		Get:     func() any { return m.readoutSide() },
+		Set:     func(v any) error { return m.setReadout(v.(string)) },
 	}}
 
 	// Ranges come from what looks right, not from what the maths allows: a
@@ -66,6 +73,12 @@ func (m *Module) Settings() []settings.Setting {
 // from the module's own copy when it does not. The copy is what lets the ring
 // and the avatar be visited without losing the sphere's settings.
 func (m *Module) tuning() holo.Params {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.tuningLocked()
+}
+
+func (m *Module) tuningLocked() holo.Params {
 	if t, ok := m.renderer.(tunable); ok {
 		return t.Params()
 	}
@@ -75,10 +88,35 @@ func (m *Module) tuning() holo.Params {
 // setTuning records the parameters and hands them to the renderer if it can
 // use them.
 func (m *Module) setTuning(p holo.Params) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.params = p
 	if t, ok := m.renderer.(tunable); ok {
 		t.SetParams(p)
 	}
+}
+
+// readoutSide is where the text column sits.
+func (m *Module) readoutSide() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.side
+}
+
+// setReadout moves the column, or takes it away. The sphere is resized as
+// part of the same change: it has to be built for the width it will be painted
+// into.
+func (m *Module) setReadout(side string) error {
+	switch side {
+	case "off", "left", "right":
+	default:
+		return fmt.Errorf("hologram: unknown readout %q (want off, left or right)", side)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.side = side
+	m.renderer.Resize(m.cols-columnW(m.cols, side), m.rows)
+	return nil
 }
 
 // Values is what gets written back to the configuration.
@@ -86,6 +124,7 @@ func (m *Module) Values() map[string]any {
 	p := m.tuning()
 	return map[string]any{
 		"style":    m.style,
+		"readout":  m.side,
 		"speed":    p.Speed,
 		"trail":    p.Trail,
 		"density":  p.Density,
@@ -97,10 +136,12 @@ func (m *Module) Values() map[string]any {
 // setStyle swaps the renderer, carrying the tuning across so that looking at
 // the ring and coming back does not reset the sphere.
 func (m *Module) setStyle(style string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if style == m.style {
 		return nil
 	}
-	params := m.tuning()
+	params := m.tuningLocked()
 	var r Renderer
 	switch style {
 	case "sphere":
@@ -112,7 +153,7 @@ func (m *Module) setStyle(style string) error {
 	default:
 		return fmt.Errorf("hologram: unknown style %q (want sphere, ring or avatar)", style)
 	}
-	r.Resize(m.cols, m.rows)
+	r.Resize(m.cols-columnW(m.cols, m.side), m.rows)
 	r.SetSignal(m.sig)
 	m.renderer, m.style, m.params = r, style, params
 	return nil

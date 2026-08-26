@@ -58,3 +58,30 @@ func TestPercentageForAConfiguredModel(t *testing.T) {
 		t.Fatalf("ContextPercent = %g, want 25", pct)
 	}
 }
+
+func TestHumanTokensStaysShortWithoutLying(t *testing.T) {
+	for _, c := range []struct {
+		in   int
+		want string
+	}{
+		{0, "0"},
+		{812, "812"},
+		{1_200, "1.2k"},
+		{34_000, "34k"},
+		{999_999, "999k"},
+		{1_250_000, "1.2M"},
+	} {
+		if got := transcript.HumanTokens(c.in); got != c.want {
+			t.Errorf("HumanTokens(%d) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestShortModelDropsTheVendorPrefix(t *testing.T) {
+	if got := transcript.ShortModel("claude-opus-5"); got != "opus-5" {
+		t.Errorf("ShortModel = %q, want %q", got, "opus-5")
+	}
+	if got := transcript.ShortModel("something-else"); got != "something-else" {
+		t.Errorf("ShortModel rewrote an unrelated name to %q", got)
+	}
+}

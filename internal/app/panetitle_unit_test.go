@@ -1,0 +1,43 @@
+package app
+
+import (
+	"testing"
+
+	"claudecontrol/internal/layout"
+)
+
+func TestShrinkTopGivesUpTheTitleRow(t *testing.T) {
+	got := shrinkTop(layout.Rect{X: 4, Y: 2, W: 20, H: 6}, titleH)
+	want := layout.Rect{X: 4, Y: 3, W: 20, H: 5}
+	if got != want {
+		t.Errorf("shrinkTop = %v, want %v", got, want)
+	}
+	// A module that wants no title keeps every row it was given.
+	full := layout.Rect{X: 4, Y: 2, W: 20, H: 6}
+	if got := shrinkTop(full, 0); got != full {
+		t.Errorf("shrinkTop(_, 0) = %v, want %v", got, full)
+	}
+	// A pane too short for both keeps its origin and has no content, rather
+	// than reporting a negative height that callers would have to guard.
+	if got := shrinkTop(layout.Rect{X: 1, Y: 1, W: 8, H: 1}, titleH); got.H != 0 {
+		t.Errorf("a one-row pane leaves %d content rows, want 0", got.H)
+	}
+}
+
+func TestTruncateMarksWhatItCut(t *testing.T) {
+	for _, c := range []struct {
+		in   string
+		w    int
+		want string
+	}{
+		{"claude", 10, "claude"},
+		{"claude", 6, "claude"},
+		{"claude", 5, "clau…"},
+		{"claude", 1, "…"},
+		{"claude", 0, ""},
+	} {
+		if got := truncate(c.in, c.w); got != c.want {
+			t.Errorf("truncate(%q, %d) = %q, want %q", c.in, c.w, got, c.want)
+		}
+	}
+}
