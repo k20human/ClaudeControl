@@ -7,7 +7,7 @@ import (
 
 	"claudecontrol/internal/layout"
 	"claudecontrol/internal/module"
-	"claudecontrol/internal/session"
+	"claudecontrol/internal/pool"
 )
 
 func dragApp(t *testing.T, w, h int) *App {
@@ -23,7 +23,8 @@ func dragApp(t *testing.T, w, h int) *App {
 			},
 		},
 		modules:  map[layout.PaneID]module.Module{1: &stub{}, 2: &stub{}},
-		sessions: session.NewRegistry(),
+		bus:      testBus,
+		pool:     pool.New(testBus),
 		area:     layout.Rect{X: 0, Y: 0, W: w, H: h},
 		focus:    1,
 		prev:     1,

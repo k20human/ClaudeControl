@@ -174,26 +174,3 @@ func TestSessionSendTextReachesTheProcess(t *testing.T) {
 	s.SendText("ping\r")
 	waitFor(t, `"got:ping"`, func() bool { return anyRowContains(s, 30, 5, "got:ping") })
 }
-
-func TestRegistryTracksSessions(t *testing.T) {
-	r := session.NewRegistry()
-	s, err := session.Start(session.Spec{
-		ID: "reg", Argv: []string{"sleep", "5"}, Dir: t.TempDir(), Width: 10, Height: 3,
-	})
-	if err != nil {
-		t.Fatalf("Start: %v", err)
-	}
-	r.Add(s)
-	if got, ok := r.Get("reg"); !ok || got != s {
-		t.Fatal("Get(reg) did not return the session")
-	}
-	if len(r.All()) != 1 {
-		t.Fatalf("All() = %d sessions, want 1", len(r.All()))
-	}
-	if err := r.CloseAll(); err != nil {
-		t.Fatalf("CloseAll: %v", err)
-	}
-	if len(r.All()) != 0 {
-		t.Fatalf("All() after CloseAll = %d, want 0", len(r.All()))
-	}
-}

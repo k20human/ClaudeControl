@@ -5,10 +5,14 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 
+	"claudecontrol/internal/bus"
 	"claudecontrol/internal/layout"
 	"claudecontrol/internal/module"
-	"claudecontrol/internal/session"
+	"claudecontrol/internal/pool"
 )
+
+// testBus backs the pool the lifecycle fixtures use.
+var testBus = bus.New()
 
 // stub is a module that draws nothing, so lifecycle can be tested without a
 // terminal or a process.
@@ -23,7 +27,8 @@ func newTestApp() *App {
 	return &App{
 		root:     &layout.Node{Kind: layout.KindLeaf, PaneID: 1},
 		modules:  map[layout.PaneID]module.Module{1: &stub{}},
-		sessions: session.NewRegistry(),
+		bus:      testBus,
+		pool:     pool.New(testBus),
 		rects:    map[layout.PaneID]layout.Rect{1: {X: 0, Y: 0, W: 80, H: 24}},
 		area:     layout.Rect{X: 0, Y: 0, W: 80, H: 24},
 		focus:    1,

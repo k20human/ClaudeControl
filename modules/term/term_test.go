@@ -8,8 +8,9 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 
+	"claudecontrol/internal/bus"
 	"claudecontrol/internal/module"
-	"claudecontrol/internal/session"
+	"claudecontrol/internal/pool"
 	_ "claudecontrol/modules/term"
 )
 
@@ -61,7 +62,7 @@ func (b *buffer) row(y int) string {
 }
 
 func TestTermModuleDrawsGuestOutputAtTheGivenOffset(t *testing.T) {
-	reg := session.NewRegistry()
+	p := pool.New(bus.New())
 	m, err := module.New("term", map[string]any{
 		"cmd": []any{"printf", "hi"},
 		"dir": t.TempDir(),
@@ -69,7 +70,7 @@ func TestTermModuleDrawsGuestOutputAtTheGivenOffset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("module.New: %v", err)
 	}
-	if err := m.Init(module.Context{PaneID: 1, Sessions: reg, Wake: func() {}}); err != nil {
+	if err := m.Init(module.Context{PaneID: 1, Pool: p, Wake: func() {}}); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
 	defer m.Close()
@@ -92,8 +93,8 @@ func TestTermModuleDrawsGuestOutputAtTheGivenOffset(t *testing.T) {
 	if !strings.HasPrefix(got, "     hi") {
 		t.Fatalf("row 2 = %q, want the guest output starting at column 5", got)
 	}
-	if len(reg.All()) != 1 {
-		t.Fatalf("registry holds %d sessions, want 1", len(reg.All()))
+	if len(p.All()) != 1 {
+		t.Fatalf("pool holds %d sessions, want 1", len(p.All()))
 	}
 }
 
@@ -108,7 +109,7 @@ func TestUnknownModuleNameIsAnError(t *testing.T) {
 // combinations, so routing printable text through it silently swallows every
 // capital letter. This pins the workaround down.
 func TestShiftedCharacterReachesTheGuest(t *testing.T) {
-	reg := session.NewRegistry()
+	p := pool.New(bus.New())
 	m, err := module.New("term", map[string]any{
 		"cmd": []any{"sh", "-c", "printf '>'; cat"},
 		"dir": t.TempDir(),
@@ -116,7 +117,7 @@ func TestShiftedCharacterReachesTheGuest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("module.New: %v", err)
 	}
-	if err := m.Init(module.Context{PaneID: 1, Sessions: reg, Wake: func() {}}); err != nil {
+	if err := m.Init(module.Context{PaneID: 1, Pool: p, Wake: func() {}}); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
 	defer m.Close()

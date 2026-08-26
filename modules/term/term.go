@@ -93,8 +93,8 @@ func (m *Module) Resize(w, h int) error {
 			return err
 		}
 		m.sess = s
-		if m.ctx.Sessions != nil {
-			m.ctx.Sessions.Add(s)
+		if m.ctx.Pool != nil {
+			m.ctx.Pool.Add(s, m.argv[0], m.dir)
 		}
 		return nil
 	}
@@ -162,13 +162,17 @@ func (m *Module) Paste(text string) {
 // Session exposes the hosted session so the application can read its status.
 func (m *Module) Session() *session.Session { return m.sess }
 
-// Close stops the process and drops it from the registry.
+// Close ends the process.
+//
+// A term pane owns what it hosts: a shell has no conversation worth keeping,
+// so closing the pane closes the command. The claude module does the opposite
+// and merely detaches, because a Claude session does have something to keep.
 func (m *Module) Close() error {
 	if m.sess == nil {
 		return nil
 	}
-	if m.ctx.Sessions != nil {
-		m.ctx.Sessions.Remove(m.sess.ID)
+	if m.ctx.Pool != nil {
+		return m.ctx.Pool.Kill(m.sess.ID)
 	}
 	return m.sess.Close()
 }

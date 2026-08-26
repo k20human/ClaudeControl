@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"claudecontrol/internal/layout"
+	"claudecontrol/internal/render"
 )
 
 var (
@@ -80,7 +81,7 @@ func (a *App) buildStatusBar() []button {
 // drawStatusBar paints the bar and its buttons.
 func (a *App) drawStatusBar(scr uv.Screen) {
 	y := a.area.H - 1
-	fill(scr, layout.Rect{X: 0, Y: y, W: a.area.W, H: 1}, barBg)
+	render.Fill(scr, uv.Rect(0, y, a.area.W, 1), barBg)
 
 	for i, b := range a.buttons {
 		fg, bg := color.Color(barFg), color.Color(barBg)
@@ -90,7 +91,7 @@ func (a *App) drawStatusBar(scr uv.Screen) {
 		if i == a.hoverBtn {
 			fg, bg = barHotFg, barHotBg
 		}
-		writeText(scr, b.rect.X, y, " "+b.label+" ", fg, bg)
+		render.Text(scr, b.rect.X, y, " "+b.label+" ", fg, bg)
 	}
 
 	// Pane count, right of the buttons and left of quit.
@@ -99,25 +100,7 @@ func (a *App) drawStatusBar(scr uv.Screen) {
 		count = "1 pane"
 	}
 	if x := a.area.W - ansi.StringWidth("⏻ quit") - 4 - ansi.StringWidth(count) - 2; x > 0 {
-		writeText(scr, x, y, count, barCountFg, barBg)
-	}
-}
-
-// writeText paints a string, clipped to the screen bounds.
-func writeText(scr uv.Screen, x, y int, text string, fg, bg color.Color) {
-	b := scr.Bounds()
-	for _, r := range []rune(text) {
-		if x >= b.Max.X {
-			return
-		}
-		if x >= b.Min.X {
-			cell := uv.EmptyCell
-			cell.Content = string(r)
-			cell.Style.Fg = fg
-			cell.Style.Bg = bg
-			scr.SetCell(x, y, &cell)
-		}
-		x++
+		render.Text(scr, x, y, count, barCountFg, barBg)
 	}
 }
 

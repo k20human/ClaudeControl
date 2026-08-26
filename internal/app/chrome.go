@@ -6,6 +6,7 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 
 	"claudecontrol/internal/layout"
+	"claudecontrol/internal/render"
 )
 
 var (
@@ -29,19 +30,7 @@ func drawDividers(scr uv.Screen, rects map[layout.PaneID]layout.Rect, divs []lay
 		case hasFocus && touches(d.Rect, fr):
 			bg = focusBg
 		}
-		fill(scr, d.Rect, bg)
-	}
-}
-
-// fill paints a rectangle with a background colour.
-func fill(scr uv.Screen, r layout.Rect, bg color.Color) {
-	for y := r.Y; y < r.Y+r.H; y++ {
-		for x := r.X; x < r.X+r.W; x++ {
-			cell := uv.EmptyCell
-			cell.Content = " "
-			cell.Style.Bg = bg
-			scr.SetCell(x, y, &cell)
-		}
+		render.Fill(scr, uv.Rect(d.Rect.X, d.Rect.Y, d.Rect.W, d.Rect.H), bg)
 	}
 }
 

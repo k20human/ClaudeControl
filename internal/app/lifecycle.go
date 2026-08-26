@@ -21,7 +21,7 @@ func (a *App) newPane(o layout.Orientation) error {
 	if err != nil {
 		return err
 	}
-	if err := m.Init(module.Context{PaneID: id, Sessions: a.sessions, Wake: a.Wake}); err != nil {
+	if err := m.Init(a.moduleContext(id)); err != nil {
 		return err
 	}
 

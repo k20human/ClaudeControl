@@ -5,14 +5,27 @@ package module
 import (
 	uv "github.com/charmbracelet/ultraviolet"
 
+	"claudecontrol/internal/bus"
 	"claudecontrol/internal/layout"
-	"claudecontrol/internal/session"
+	"claudecontrol/internal/pool"
 )
 
 // Context carries what a module needs from the application.
 type Context struct {
-	PaneID   layout.PaneID
-	Sessions *session.Registry
+	PaneID layout.PaneID
+
+	// Pool owns the sessions. A module that starts one hands it over rather
+	// than keeping it: the session outlives the pane.
+	Pool *pool.Pool
+
+	// Bus is where facts are published and subscribed to.
+	Bus *bus.Bus
+
+	// HookSocket and Binary are what a session needs in order to report its
+	// state: the socket to send to, and the executable that does the sending.
+	HookSocket string
+	Binary     string
+
 	// Wake asks the application to redraw. It never blocks and may coalesce.
 	Wake func()
 }
