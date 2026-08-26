@@ -98,6 +98,19 @@ func (a *App) handleMouse(ev uv.MouseEvent, m uv.Mouse) {
 		return
 	}
 
+	// The session list takes the pointer too: a click outside it closes it,
+	// and one on the status bar still reaches the buttons.
+	if a.sessionPanel != nil {
+		if _, isClick := ev.(uv.MouseClickEvent); isClick {
+			if i := buttonAt(a.buttons, m.X, m.Y); i >= 0 {
+				a.buttons[i].run(a)
+				return
+			}
+			a.toggleSessionPanel()
+		}
+		return
+	}
+
 	a.hoverDiv = dividerAt(a.divs, m.X, m.Y)
 	a.hoverBtn = buttonAt(a.buttons, m.X, m.Y)
 

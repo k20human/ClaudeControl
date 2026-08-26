@@ -261,12 +261,12 @@ func TestClickFocusesAPaneWithoutReachingItsGuest(t *testing.T) {
 // The status bar is the mouse-only path to everything the keyboard can do, so
 // its labels are part of the contract.
 func TestStatusBarOffersTheExpectedButtons(t *testing.T) {
-	const W, H = 76, 14
+	const W, H = 100, 14
 	_, snap := run(t, "testdata/two-echo.yaml", W, H)
 	waitForRow(t, snap, 0, "L>")
 
 	bar := waitForRow(t, snap, H-1, "quit").row(H - 1)
-	for _, label := range []string{"new", "close", "zoom", "flip", "equal", "help", "quit"} {
+	for _, label := range []string{"new", "close", "list", "help", "zoom", "flip", "equal", "quit"} {
 		if !strings.Contains(bar, label) {
 			t.Errorf("status bar = %q, missing %q", bar, label)
 		}
@@ -442,5 +442,25 @@ func TestClickingOutsideTheQuitButtonsStays(t *testing.T) {
 	}
 	if anywhere(snap(), "[ quit ]") {
 		t.Error("the confirmation is still open")
+	}
+}
+
+// A bar too narrow for every button drops from the end rather than letting
+// labels overlap. Quit and the essentials survive; what goes is still on the
+// keyboard and in the help panel.
+func TestNarrowStatusBarDropsTheLeastImportantButtons(t *testing.T) {
+	const W, H = 52, 14
+	_, snap := run(t, "testdata/two-echo.yaml", W, H)
+	waitForRow(t, snap, 0, "L>")
+
+	bar := waitForRow(t, snap, H-1, "quit").row(H - 1)
+	for _, label := range []string{"new", "close", "quit"} {
+		if !strings.Contains(bar, label) {
+			t.Errorf("status bar = %q, dropped the essential %q", bar, label)
+		}
+	}
+	if ansi.StringWidth(bar) > W {
+		t.Errorf("status bar is %d columns wide on a %d column screen: %q",
+			ansi.StringWidth(bar), W, bar)
 	}
 }

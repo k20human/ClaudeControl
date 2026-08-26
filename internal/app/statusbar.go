@@ -36,6 +36,9 @@ type button struct {
 // button after it — so the thing you click would stop being the thing you aimed
 // at. Measuring the way the terminal measures is what makes icons safe here.
 func (a *App) buildStatusBar() []button {
+	// Ordered by what would be missed most, because a narrow bar drops from
+	// the end. Help goes early despite being the least used: it is how the
+	// rest is discovered, and a bar that drops it leaves nothing to ask.
 	items := []struct {
 		label string
 		run   func(a *App)
@@ -43,17 +46,38 @@ func (a *App) buildStatusBar() []button {
 	}{
 		{"+ new", func(a *App) { _ = a.newPane(layout.Horizontal) }, false},
 		{"× close", func(a *App) { _ = a.closePane(a.focus) }, false},
+		{"◫ list", func(a *App) { a.toggleSessionPanel() }, false},
+		{"? help", func(a *App) { a.overlay = overlayHelp }, false},
 		{"▣ zoom", func(a *App) { a.toggleZoom() }, false},
 		{"⇄ flip", func(a *App) { a.rotateFocusedSplit() }, false},
 		{"≡ equal", func(a *App) { a.evenOutSplits() }, false},
-		{"? help", func(a *App) { a.overlay = overlayHelp }, false},
 	}
 
 	y := a.area.H - 1
 	out := make([]button, 0, len(items)+1)
+
+	// The right-hand block is reserved before anything is laid out on the
+	// left. Quit has to stay reachable however many buttons are added, and a
+	// button drawn half over its neighbour is worse than a button absent.
+	const quit = "⏻ quit"
+	quitW := ansi.StringWidth(quit) + 2
+	quitX := a.area.W - quitW - 1
+
+	a.barCount = a.countLabel()
+	a.barCountX = quitX - 2 - ansi.StringWidth(a.barCount)
+	limit := a.barCountX - 1
+	if a.barCount == "" {
+		limit = quitX - 1
+	}
+
 	x := 1
 	for _, it := range items {
 		w := ansi.StringWidth(it.label) + 2
+		if x+w > limit {
+			// Out of room. Everything after this is dropped rather than
+			// squeezed: the keyboard and the help panel still reach it.
+			break
+		}
 		out = append(out, button{
 			label: it.label,
 			rect:  layout.Rect{X: x, Y: y, W: w, H: 1},
@@ -63,19 +87,30 @@ func (a *App) buildStatusBar() []button {
 		x += w + 1
 	}
 
-	// Quit sits alone at the far right, away from "close", so that ending the
-	// whole application is never one slip away from closing a single pane.
-	const quit = "⏻ quit"
-	qw := ansi.StringWidth(quit) + 2
-	if qx := a.area.W - qw - 1; qx > x {
+	if quitX > x {
 		out = append(out, button{
 			label: quit,
-			rect:  layout.Rect{X: qx, Y: y, W: qw, H: 1},
+			rect:  layout.Rect{X: quitX, Y: y, W: quitW, H: 1},
 			run:   func(a *App) { a.overlay = overlayQuit },
 			warn:  true,
 		})
+	} else {
+		a.barCount = ""
 	}
 	return out
+}
+
+// countLabel is what sits between the buttons and quit. A session waiting on
+// you displaces the pane count: it is the one fact worth the space, and it is
+// why the sessions module exists at all.
+func (a *App) countLabel() string {
+	if n := a.pool.Waiting(); n > 0 {
+		return fmt.Sprintf("%d waiting", n)
+	}
+	if len(a.rects) == 1 {
+		return "1 pane"
+	}
+	return fmt.Sprintf("%d panes", len(a.rects))
 }
 
 // drawStatusBar paints the bar and its buttons.
@@ -95,12 +130,8 @@ func (a *App) drawStatusBar(scr uv.Screen) {
 	}
 
 	// Pane count, right of the buttons and left of quit.
-	count := fmt.Sprintf("%d panes", len(a.rects))
-	if len(a.rects) == 1 {
-		count = "1 pane"
-	}
-	if x := a.area.W - ansi.StringWidth("⏻ quit") - 4 - ansi.StringWidth(count) - 2; x > 0 {
-		render.Text(scr, x, y, count, barCountFg, barBg)
+	if a.barCount != "" && a.barCountX > 0 {
+		render.Text(scr, a.barCountX, y, a.barCount, barCountFg, barBg)
 	}
 }
 

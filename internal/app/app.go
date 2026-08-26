@@ -58,6 +58,13 @@ type App struct {
 	overlay      overlayKind
 	buttons      []button
 	panelButtons []button
+	sessionPanel selector
+
+	// barCount is the label between the status-bar buttons and quit, and
+	// barCountX where it starts. Both are settled during layout so drawing and
+	// hit-testing cannot disagree about where anything is.
+	barCount  string
+	barCountX int
 
 	// pointerX and pointerY are the last reported pointer position, so a panel
 	// button can light up under it the way a status-bar button does.
@@ -313,10 +320,11 @@ func (a *App) draw() {
 	}
 	drawDividers(a.scr, a.rects, a.divs, a.focus, a.hoverDiv)
 	a.drawStatusBar(a.scr)
+	a.drawSessionPanel(a.scr)
 	a.drawOverlay(a.scr)
 
 	a.scr.HideCursor()
-	if a.overlay != overlayNone {
+	if a.overlay != overlayNone || a.sessionPanel != nil {
 		return
 	}
 	if m, ok := a.modules[a.focus]; ok {

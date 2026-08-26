@@ -32,11 +32,32 @@ var bindings = []binding{
 	{[]string{"alt+z"}, "alt+z", "zoom / restore", func(a *App) { a.toggleZoom() }},
 	{[]string{"alt+m"}, "alt+m", "flip the split: side by side <-> stacked", func(a *App) { a.rotateFocusedSplit() }},
 	{[]string{"alt+s"}, "alt+s", "reset every split to equal shares", func(a *App) { a.evenOutSplits() }},
+	{[]string{"alt+space"}, "alt+space", "sessions", func(a *App) { a.toggleSessionPanel() }},
 	{[]string{"alt+g"}, "alt+g", "this panel", func(a *App) { a.overlay = overlayHelp }},
 	{[]string{"alt+q"}, "alt+q", "quit", func(a *App) { a.overlay = overlayQuit }},
 }
 
 func (a *App) handleKey(e uv.KeyPressEvent) {
+	// The session list takes the keyboard while it is open, so its plain keys
+	// stay plain: no modifier needed to attach or detach.
+	if a.sessionPanel != nil {
+		switch {
+		case e.MatchString("esc", "alt+space"):
+			a.toggleSessionPanel()
+		case e.MatchString("up", "k"):
+			a.sessionPanel.MoveSelection(-1)
+		case e.MatchString("down", "j"):
+			a.sessionPanel.MoveSelection(1)
+		case e.MatchString("enter"):
+			a.attachSelected()
+		case e.MatchString("d"):
+			a.detachSelected()
+		case e.MatchString("x"):
+			a.killSelected()
+		}
+		return
+	}
+
 	// A panel swallows the keystroke that closes it, so dismissing help can
 	// never drop a stray character into the session underneath.
 	if a.overlay != overlayNone {
