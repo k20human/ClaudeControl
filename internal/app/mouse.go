@@ -98,6 +98,24 @@ func (a *App) handleMouse(ev uv.MouseEvent, m uv.Mouse) {
 		return
 	}
 
+	// The menu takes the pointer while it is open. Its own rectangle handles
+	// the click; the status bar stays reachable; anything else closes it.
+	if a.settingsPanel != nil {
+		if _, isClick := ev.(uv.MouseClickEvent); isClick {
+			if i := buttonAt(a.buttons, m.X, m.Y); i >= 0 {
+				a.buttons[i].run(a)
+				return
+			}
+			r := a.settingsPanelRect()
+			if m.X >= r.X && m.X < r.X+r.W && m.Y >= r.Y && m.Y < r.Y+r.H {
+				_ = a.settingsPanel.ClickAt(m.X, m.Y, uv.Rect(r.X, r.Y, r.W, r.H))
+				return
+			}
+			a.toggleSettingsPanel()
+		}
+		return
+	}
+
 	// The session list takes the pointer too: a click outside it closes it,
 	// and one on the status bar still reaches the buttons.
 	if a.sessionPanel != nil {
@@ -200,5 +218,6 @@ func (a *App) continueDrag(ev uv.MouseEvent, m uv.Mouse) {
 	next[d.index] += delta
 	next[d.index+1] -= delta
 	copy(d.parent.Ratios, next)
+	a.layoutChanged = true
 	a.relayout()
 }

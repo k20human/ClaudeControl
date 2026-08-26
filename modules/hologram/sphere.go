@@ -33,6 +33,16 @@ func (s *sphereRenderer) Resize(cols, rows int) {
 
 func (s *sphereRenderer) Step(dt float64) { s.sphere.Step(dt) }
 
+// Params returns the parameters as configured, before any signal is applied.
+func (s *sphereRenderer) Params() holo.Params { return s.base }
+
+// SetParams replaces them and re-applies the current signal, so a slider takes
+// effect without waiting for the next pool announcement.
+func (s *sphereRenderer) SetParams(p holo.Params) {
+	s.base = p
+	s.SetSignal(s.sig)
+}
+
 // SetSignal maps what the sessions are doing onto the animation.
 //
 // Rotation follows how many sessions are working, so a busy machine visibly

@@ -604,3 +604,47 @@ func TestHologramDrawsBesideALiveSession(t *testing.T) {
 	s.SendText("A")
 	waitForRow(t, snap, 0, "P>A")
 }
+
+// Opening the menu, moving a slider and saving is the whole feature. The
+// comment in the file is the part that proves the write went through the
+// syntax tree rather than re-encoding a struct.
+func TestSettingsMenuAdjustsAndSaves(t *testing.T) {
+	const W, H = 90, 24
+	cfg := filepath.Join(t.TempDir(), "config.yaml")
+	body, err := os.ReadFile("testdata/settings.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfg, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	s, snap := run(t, cfg, W, H)
+
+	bar := waitForRow(t, snap, H-1, "set").row(H - 1)
+	click(t, s, columnOf(bar, "set"), H-1)
+	waitForAnywhere(t, snap, "SETTINGS")
+	waitForAnywhere(t, snap, "flow speed")
+
+	// Move down to the speed slider and nudge it up.
+	s.SendText("j")
+	time.Sleep(150 * time.Millisecond)
+	for i := 0; i < 5; i++ {
+		s.SendText("l")
+		time.Sleep(80 * time.Millisecond)
+	}
+	s.SendText("s")
+	time.Sleep(600 * time.Millisecond)
+
+	got, err := os.ReadFile(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := string(got)
+	if !strings.Contains(out, "# a hand-written note that must survive") {
+		t.Errorf("the leading comment was lost:\n%s", out)
+	}
+	if strings.Contains(out, "speed: 0.18") {
+		t.Errorf("the slider did not change anything:\n%s", out)
+	}
+}

@@ -33,11 +33,36 @@ var bindings = []binding{
 	{[]string{"alt+m"}, "alt+m", "flip the split: side by side <-> stacked", func(a *App) { a.rotateFocusedSplit() }},
 	{[]string{"alt+s"}, "alt+s", "reset every split to equal shares", func(a *App) { a.evenOutSplits() }},
 	{[]string{"alt+space"}, "alt+space", "sessions", func(a *App) { a.toggleSessionPanel() }},
+	{[]string{"alt+,"}, "alt+,", "settings", func(a *App) { a.toggleSettingsPanel() }},
 	{[]string{"alt+g"}, "alt+g", "this panel", func(a *App) { a.overlay = overlayHelp }},
 	{[]string{"alt+q"}, "alt+q", "quit", func(a *App) { a.overlay = overlayQuit }},
 }
 
 func (a *App) handleKey(e uv.KeyPressEvent) {
+	// The menu takes the keyboard while it is open. Plain arrows adjust,
+	// because a modifier on every nudge would make tuning a slider a chore.
+	if a.settingsPanel != nil {
+		switch {
+		case e.MatchString("esc", "alt+,"):
+			a.toggleSettingsPanel()
+		case e.MatchString("up", "k"):
+			a.settingsPanel.Move(-1)
+		case e.MatchString("down", "j"):
+			a.settingsPanel.Move(1)
+		case e.MatchString("left", "h"):
+			_ = a.settingsPanel.Adjust(-1)
+		case e.MatchString("right", "l"):
+			_ = a.settingsPanel.Adjust(1)
+		case e.MatchString("shift+left"):
+			_ = a.settingsPanel.Adjust(-10)
+		case e.MatchString("shift+right"):
+			_ = a.settingsPanel.Adjust(10)
+		case e.MatchString("s"):
+			_ = a.saveSettings()
+		}
+		return
+	}
+
 	// The session list takes the keyboard while it is open, so its plain keys
 	// stay plain: no modifier needed to attach or detach.
 	if a.sessionPanel != nil {

@@ -48,6 +48,7 @@ func (a *App) buildStatusBar() []button {
 		{"× close", func(a *App) { _ = a.closePane(a.focus) }, false},
 		{"◫ list", func(a *App) { a.toggleSessionPanel() }, false},
 		{"? help", func(a *App) { a.overlay = overlayHelp }, false},
+		{"⚙ set", func(a *App) { a.toggleSettingsPanel() }, false},
 		{"▣ zoom", func(a *App) { a.toggleZoom() }, false},
 		{"⇄ flip", func(a *App) { a.rotateFocusedSplit() }, false},
 		{"≡ equal", func(a *App) { a.evenOutSplits() }, false},

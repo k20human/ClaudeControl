@@ -17,6 +17,8 @@ import (
 	"claudecontrol/internal/pool"
 	"claudecontrol/internal/session"
 	"claudecontrol/internal/transcript"
+
+	panel "claudecontrol/modules/settings"
 )
 
 // redrawInterval coalesces bursts of guest output into one repaint. Without
@@ -60,10 +62,22 @@ type App struct {
 	hoverDiv int
 	hoverBtn int
 
-	overlay      overlayKind
-	buttons      []button
-	panelButtons []button
-	sessionPanel selector
+	overlay       overlayKind
+	buttons       []button
+	panelButtons  []button
+	sessionPanel  selector
+	settingsPanel *panel.Panel
+
+	// cfgPath is where settings are written back; moduleNames records what
+	// each pane is called there, since the tree itself only holds ids.
+	cfgPath     string
+	moduleNames map[layout.PaneID]string
+	status      string
+
+	// layoutChanged records whether the arrangement differs from the file.
+	// Saving takes the narrow path while it is false, which is what keeps the
+	// comments inside the layout block.
+	layoutChanged bool
 
 	// barCountX and barCountW are the slot between the status-bar buttons and
 	// quit. The slot is settled during layout so nothing can grow into a
@@ -95,16 +109,18 @@ func New(cfgPath string) (*App, error) {
 
 	b := bus.New()
 	a := &App{
-		root:     root,
-		modules:  make(map[layout.PaneID]module.Module),
-		bus:      b,
-		pool:     pool.New(b),
-		rects:    make(map[layout.PaneID]layout.Rect),
-		hoverDiv: -1,
-		hoverBtn: -1,
-		pointerX: -1,
-		pointerY: -1,
-		wake:     make(chan struct{}, 1),
+		root:        root,
+		modules:     make(map[layout.PaneID]module.Module),
+		bus:         b,
+		pool:        pool.New(b),
+		rects:       make(map[layout.PaneID]layout.Rect),
+		cfgPath:     cfgPath,
+		moduleNames: make(map[layout.PaneID]string),
+		hoverDiv:    -1,
+		hoverBtn:    -1,
+		pointerX:    -1,
+		pointerY:    -1,
+		wake:        make(chan struct{}, 1),
 	}
 
 	// The socket has to exist before any session starts, since a session is
@@ -133,6 +149,7 @@ func New(cfgPath string) (*App, error) {
 			return nil, fmt.Errorf("pane %d: init: %w", id, err)
 		}
 		a.modules[id] = m
+		a.moduleNames[id] = spec.Module
 		if id > a.nextPane {
 			a.nextPane = id
 		}
@@ -333,10 +350,11 @@ func (a *App) draw() {
 	drawDividers(a.scr, a.rects, a.divs, a.focus, a.hoverDiv)
 	a.drawStatusBar(a.scr)
 	a.drawSessionPanel(a.scr)
+	a.drawSettingsPanel(a.scr)
 	a.drawOverlay(a.scr)
 
 	a.scr.HideCursor()
-	if a.overlay != overlayNone || a.sessionPanel != nil {
+	if a.overlay != overlayNone || a.sessionPanel != nil || a.settingsPanel != nil {
 		return
 	}
 	if m, ok := a.modules[a.focus]; ok {

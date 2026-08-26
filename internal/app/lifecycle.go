@@ -32,7 +32,9 @@ func (a *App) newPane(o layout.Orientation) error {
 	}
 	a.root = root
 	a.modules[id] = m
+	a.moduleNames[id] = "claude"
 	a.zoomed = 0
+	a.layoutChanged = true
 	a.relayout()
 	a.setFocus(id)
 	return nil
@@ -62,6 +64,7 @@ func (a *App) closePane(id layout.PaneID) error {
 	if a.zoomed == id {
 		a.zoomed = 0
 	}
+	a.layoutChanged = true
 	a.relayout()
 	if _, still := a.rects[a.focus]; !still {
 		if ids := layout.Leaves(a.root); len(ids) > 0 {
@@ -129,6 +132,7 @@ func (a *App) rotateFocusedSplit() {
 	} else {
 		parent.Orientation = layout.Horizontal
 	}
+	a.layoutChanged = true
 	a.relayout()
 }
 
@@ -150,5 +154,6 @@ func (a *App) evenOutSplits() {
 		}
 	}
 	walk(a.root)
+	a.layoutChanged = true
 	a.relayout()
 }
