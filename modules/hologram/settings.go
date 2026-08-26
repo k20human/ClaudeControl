@@ -23,6 +23,13 @@ func (m *Module) Settings() []settings.Setting {
 		Choices: []string{"sphere", "ring", "avatar"},
 		Get:     func() any { return m.style },
 		Set:     func(v any) error { return m.setStyle(v.(string)) },
+	}, {
+		Key:     "readout",
+		Label:   "text column",
+		Kind:    settings.KindChoice,
+		Choices: []string{"right", "left", "off"},
+		Get:     func() any { return m.readoutSide() },
+		Set:     func(v any) error { return m.setReadout(v.(string)) },
 	}}
 
 	// Ranges come from what looks right, not from what the maths allows: a
@@ -89,11 +96,35 @@ func (m *Module) setTuning(p holo.Params) {
 	}
 }
 
+// readoutSide is where the text column sits.
+func (m *Module) readoutSide() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.side
+}
+
+// setReadout moves the column, or takes it away. The sphere is resized as
+// part of the same change: it has to be built for the width it will be painted
+// into.
+func (m *Module) setReadout(side string) error {
+	switch side {
+	case "off", "left", "right":
+	default:
+		return fmt.Errorf("hologram: unknown readout %q (want off, left or right)", side)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.side = side
+	m.renderer.Resize(m.cols-columnW(m.cols, side), m.rows)
+	return nil
+}
+
 // Values is what gets written back to the configuration.
 func (m *Module) Values() map[string]any {
 	p := m.tuning()
 	return map[string]any{
 		"style":    m.style,
+		"readout":  m.side,
 		"speed":    p.Speed,
 		"trail":    p.Trail,
 		"density":  p.Density,
@@ -122,7 +153,7 @@ func (m *Module) setStyle(style string) error {
 	default:
 		return fmt.Errorf("hologram: unknown style %q (want sphere, ring or avatar)", style)
 	}
-	r.Resize(m.cols, m.rows)
+	r.Resize(m.cols-columnW(m.cols, m.side), m.rows)
 	r.SetSignal(m.sig)
 	m.renderer, m.style, m.params = r, style, params
 	return nil

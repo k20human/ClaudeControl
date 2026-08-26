@@ -11,6 +11,7 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/vt"
 
 	"claudecontrol/internal/session"
 )
@@ -82,10 +83,18 @@ func build(t *testing.T) string {
 // is what a terminal would display.
 func run(t *testing.T, cfg string, w, h int) (*session.Session, func() *screen) {
 	t.Helper()
+	return runWith(t, cfg, w, h, nil)
+}
+
+// runWith hosts the application and lets the caller configure the emulator
+// before a byte reaches it, which is the only point at which that is safe.
+func runWith(t *testing.T, cfg string, w, h int, configure func(vt.Terminal)) (*session.Session, func() *screen) {
+	t.Helper()
 	s, err := session.Start(session.Spec{
-		ID:   "claudecontrol",
-		Argv: []string{build(t), "-config", cfg},
-		Dir:  ".",
+		Configure: configure,
+		ID:        "claudecontrol",
+		Argv:      []string{build(t), "-config", cfg},
+		Dir:       ".",
 		// The application records its panes on every layout change. Pointed at
 		// a temporary directory so a test run never touches the state of the
 		// person running it.
@@ -632,9 +641,19 @@ func TestSettingsMenuAdjustsAndSaves(t *testing.T) {
 	waitForAnywhere(t, snap, "SETTINGS")
 	waitForAnywhere(t, snap, "flow speed")
 
-	// Move down to the speed slider and nudge it up.
-	s.SendText("j")
+	// Select the speed slider by clicking its label rather than by counting
+	// keystrokes from the top: a menu built from what the modules publish
+	// gains entries, and a test that counted rows would break every time one
+	// did. A click off the bar selects without moving the value.
+	g := snap()
+	row := findRow(g, "flow speed")
+	if row < 0 {
+		t.Fatalf("no flow speed row:\n%s", g.row(0))
+	}
+	click(t, s, columnOf(g.row(row), "flow speed"), row)
 	time.Sleep(150 * time.Millisecond)
+
+	// Nudge it up.
 	for i := 0; i < 5; i++ {
 		s.SendText("l")
 		time.Sleep(80 * time.Millisecond)

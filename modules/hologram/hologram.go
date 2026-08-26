@@ -50,7 +50,17 @@ type Module struct {
 	cols int
 	rows int
 	last time.Time
+
+	// side is where the text column goes: "off", "left" or "right".
+	side    string
+	readout *readout
+	// prev is each session's last known state, so a transition can be told
+	// from a repeat of the same announcement.
+	prev map[string]poolState
 }
+
+// poolState is aliased so the map above reads without the package name.
+type poolState = pool.State
 
 // New builds the module. Recognised keys: "style" (sphere, ring or avatar),
 // and for the sphere "speed", "trail", "density", "rotation", "breath".
@@ -59,8 +69,24 @@ func New(cfg map[string]any) (module.Module, error) {
 	if style == "" {
 		style = "sphere"
 	}
+	side, ok := cfg["readout"].(string)
+	if !ok {
+		side = "right"
+	}
+	switch side {
+	case "off", "left", "right":
+	default:
+		return nil, fmt.Errorf("hologram: unknown readout %q (want off, left or right)", side)
+	}
+
 	params := paramsFrom(cfg)
-	m := &Module{style: style, params: params}
+	m := &Module{
+		style:   style,
+		params:  params,
+		side:    side,
+		readout: newReadout(params.Seed),
+		prev:    map[string]poolState{},
+	}
 	switch style {
 	case "sphere":
 		m.renderer = newSphere(params)
@@ -107,6 +133,7 @@ func (m *Module) Init(ctx module.Context) error {
 			if !ok {
 				continue
 			}
+			m.noteTransitions(entries)
 			m.mu.Lock()
 			sig := signalFrom(entries)
 			// The token counts belong to the turns, not to the pool: keep
@@ -129,6 +156,7 @@ func (m *Module) Init(ctx module.Context) error {
 			if !ok {
 				continue
 			}
+			m.readout.Note(time.Now(), turnLine(sm.Metrics))
 			m.mu.Lock()
 			m.sig.Context, m.sig.Thinking = sm.Metrics.Context, sm.Metrics.Thinking
 			m.renderer.SetSignal(m.sig)
@@ -140,6 +168,67 @@ func (m *Module) Init(ctx module.Context) error {
 		}
 	}()
 	return nil
+}
+
+// noteTransitions writes the pool's changes into the log. Only changes: the
+// pool announces its whole state on every event, and repeating "thinking" once
+// a second would bury everything that actually happened.
+func (m *Module) noteTransitions(entries []*pool.Entry) {
+	named := len(entries) > 1
+	now := time.Now()
+	seen := make(map[string]bool, len(entries))
+
+	for _, e := range entries {
+		if e.Session == nil {
+			continue
+		}
+		id := string(e.Session.ID)
+		seen[id] = true
+		was, known := m.prev[id]
+		m.prev[id] = e.State
+		if !known {
+			m.readout.Note(now, withName(e.Title, "session started", named))
+			continue
+		}
+		if was == e.State {
+			continue
+		}
+		if text := transitionText(was, e.State); text != "" {
+			m.readout.Note(now, withName(e.Title, text, named))
+		}
+	}
+	for id := range m.prev {
+		if !seen[id] {
+			delete(m.prev, id)
+		}
+	}
+}
+
+// transitionText names a change worth reporting, and returns nothing for one
+// that is not.
+func transitionText(was, now pool.State) string {
+	switch now {
+	case pool.StateWorking:
+		return "thinking…"
+	case pool.StateWaiting:
+		return "waiting for you"
+	case pool.StateExited:
+		return "session ended"
+	case pool.StateIdle:
+		if was == pool.StateWorking {
+			return "done"
+		}
+	}
+	return ""
+}
+
+// withName prefixes an event with its session, but only while more than one is
+// running: with a single session the name is on every line and says nothing.
+func withName(title, text string, named bool) string {
+	if !named || title == "" {
+		return text
+	}
+	return title + "  " + text
 }
 
 // sparksFor is how many traces a turn is worth. A turn always shows at least
@@ -200,7 +289,7 @@ func (m *Module) Resize(w, h int) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.cols, m.rows = w, h
-	m.renderer.Resize(w, h)
+	m.renderer.Resize(w-columnW(w, m.side), h)
 	return nil
 }
 
@@ -223,11 +312,22 @@ func (m *Module) Draw(scr uv.Screen, area uv.Rectangle) {
 		dt = 0.2
 	}
 	m.mu.Lock()
+	state := m.sig.Worst
+	m.mu.Unlock()
+	m.readout.Observe(state, now)
+
+	sphere, column, split := readoutSplit(area, m.side)
+
+	m.mu.Lock()
 	if dt > 0 {
 		m.renderer.Step(dt)
 	}
-	m.renderer.Draw(scr, area)
+	m.renderer.Draw(scr, sphere)
 	m.mu.Unlock()
+
+	if split {
+		m.readout.draw(scr, column, now)
+	}
 	m.wake()
 }
 

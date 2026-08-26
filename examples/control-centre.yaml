@@ -11,8 +11,11 @@ layout:
     - split: vertical
       ratios: [2, 1, 1, 1]
       children:
+        # The sphere moves differently depending on what the sessions are
+        # doing, and the column beside it logs what actually happened.
+        # readout: off | left | right — it disappears below 44 columns anyway.
         - module: hologram
-          options: { style: sphere }
+          options: { style: sphere, readout: right }
         # Token use per session, and the account's five-hour and weekly
         # budgets. The budgets are the only thing in this application that
         # reaches the network: they are read with the OAuth token Claude Code

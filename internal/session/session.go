@@ -47,6 +47,13 @@ type Spec struct {
 	// callback installed afterwards would miss it — leaving that output on the
 	// emulator with nothing to trigger a repaint.
 	OnUpdate func()
+
+	// Configure runs against the emulator after it is built and before
+	// anything is written to it. That is the only safe moment: several of the
+	// emulator's setters — SetCallbacks among them — are promoted from the
+	// unguarded type, so reaching for them once the pump is running is a race
+	// whatever the caller does.
+	Configure func(vt.Terminal)
 }
 
 // Session is a hosted process plus the emulator that interprets its output.
@@ -106,6 +113,10 @@ func Start(sp Spec) (*Session, error) {
 		ptmx:      ptmx,
 		cmd:       cmd,
 		drainDone: make(chan struct{}),
+	}
+
+	if sp.Configure != nil {
+		sp.Configure(s.Term)
 	}
 
 	// Process output feeds the emulator.
