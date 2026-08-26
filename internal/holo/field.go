@@ -164,9 +164,16 @@ func (s *Sphere) Step(dt float64) {
 
 // splat deposits one particle across the four dots it falls between.
 //
-// The deposit is a maximum, never a sum. A dot keeps the brightest particle
-// that crossed it and then fades; adding instead saturates the moment a dot is
-// crossed twice, and the whole sphere fills in.
+// The deposit adds. Brightness therefore builds where filaments cross, which
+// is what gives the sphere its bright limb and its vivid intersections — with
+// a decaying buffer the sum is bounded at roughly one deposit over one minus
+// the trail, so it converges rather than running away.
+//
+// Taking a maximum instead was tried and is wrong: a dot then holds only the
+// brightest single particle, every value lands under the threshold, and the
+// sphere all but disappears. Two hundred frames at any size leave a handful of
+// lit cells. What actually stopped the first prototype saturating was raising
+// the threshold and lowering the density, not changing how deposits combine.
 func (s *Sphere) splat(fx, fy float64, v float32) {
 	x0, y0 := int(math.Floor(fx)), int(math.Floor(fy))
 	tx, ty := float32(fx-float64(x0)), float32(fy-float64(y0))
@@ -183,9 +190,7 @@ func (s *Sphere) splat(fx, fy float64, v float32) {
 			if dy == 0 {
 				wy = 1 - ty
 			}
-			if c := v * wx * wy; c > s.dots[y*s.w+x] {
-				s.dots[y*s.w+x] = c
-			}
+			s.dots[y*s.w+x] += v * wx * wy
 		}
 	}
 }

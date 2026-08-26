@@ -25,19 +25,48 @@ func TestParticleCountFollowsTheArea(t *testing.T) {
 	}
 }
 
-// Deposit takes the brightest particle to cross a dot, never the sum. Adding
-// saturates the moment a dot is crossed twice, which is what turned the
-// prototype's first sphere into a solid disc.
-func TestDotsNeverExceedTheBrightestParticle(t *testing.T) {
+// Deposits add, and the decaying buffer bounds the sum: roughly one deposit
+// divided by one minus the trail. The test is that it converges — an
+// unbounded sum would wash the sphere out to a solid disc within seconds.
+func TestDotsStayBounded(t *testing.T) {
 	s := holo.NewSphere(holo.DefaultParams())
 	s.Resize(120, 120)
+
 	for i := 0; i < 400; i++ {
 		s.Step(1.0 / 30)
 	}
-	for i, v := range s.Dots() {
-		if v > 1.2 {
-			t.Fatalf("dot %d reached %g; deposit is accumulating rather than taking a maximum", i, v)
+	early := brightest(s.Dots())
+	for i := 0; i < 1600; i++ {
+		s.Step(1.0 / 30)
+	}
+	late := brightest(s.Dots())
+
+	// 1.15 is the brightest a single particle can be; 0.90 the trail.
+	const ceiling = 1.15 / (1 - 0.90) * 1.5
+	if late > ceiling {
+		t.Fatalf("brightest dot reached %g after two thousand frames, past the %g the decay should bound it to", late, ceiling)
+	}
+	if late > early*3 {
+		t.Fatalf("brightest dot went from %g to %g; it is not converging", early, late)
+	}
+}
+
+// Enough of the sphere must actually clear the drawing threshold, or the panel
+// shows a scattering of dots rather than a sphere.
+func TestEnoughDotsClearTheThreshold(t *testing.T) {
+	s := holo.NewSphere(holo.DefaultParams())
+	s.Resize(120, 120)
+	for i := 0; i < 300; i++ {
+		s.Step(1.0 / 30)
+	}
+	above := 0
+	for _, v := range s.Dots() {
+		if v > holo.Threshold {
+			above++
 		}
+	}
+	if above < 500 {
+		t.Fatalf("only %d dots clear the threshold; the sphere would barely be visible", above)
 	}
 }
 
