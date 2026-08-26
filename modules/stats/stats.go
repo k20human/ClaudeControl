@@ -39,9 +39,14 @@ var (
 	fgBroken = color.RGBA{R: 0xe5, G: 0x6b, B: 0x6b, A: 0xff}
 )
 
-// barW is how many cells a budget bar takes. Wide enough that one percent is
-// visible, narrow enough to leave room for the numbers beside it.
-const barW = 16
+// The bar takes whatever is left once the label, the share and the countdown
+// have had their room: those carry the information, the bar only makes it
+// glanceable. Below barMin there is nothing left to see and the bar is
+// dropped entirely rather than drawn as two cells pretending to be a scale.
+const (
+	barMax = 16
+	barMin = 4
+)
 
 // Module lists the sessions' token use and the account's budgets.
 type Module struct {
@@ -206,23 +211,32 @@ func (m *Module) accountRows(w int) []row {
 		}
 	}
 	rows := []row{
-		budgetRow("5h", r.Snapshot.FiveHour),
-		budgetRow("weekly", r.Snapshot.SevenDay),
+		budgetRow("5h", r.Snapshot.FiveHour, w),
+		budgetRow("weekly", r.Snapshot.SevenDay, w),
 	}
 	for _, s := range r.Snapshot.Scoped {
-		rows = append(rows, budgetRow(s.Model, s.Window))
+		rows = append(rows, budgetRow(s.Model, s.Window, w))
 	}
 	return rows
 }
 
-// budgetRow renders one budget: its share as a bar, as a number, and when it
-// refills.
-func budgetRow(label string, win usage.Window) row {
-	line := fmt.Sprintf("  %-8s %s %3.0f%%", clip(label, 8), bar(win.Percent), win.Percent)
+// budgetRow renders one budget: its share as a number, when it refills, and a
+// bar filling whatever room is left.
+func budgetRow(label string, win usage.Window, w int) row {
+	head := fmt.Sprintf("  %-6s ", clip(label, 6))
+	tail := fmt.Sprintf(" %3.0f%%", win.Percent)
 	if win.Resets {
-		line += "  " + resetIn(win.ResetsAt, time.Now())
+		tail += "  ↻ " + resetIn(win.ResetsAt, time.Now())
 	}
-	return row{line, budgetColour(win.Percent)}
+	width := w - ansi.StringWidth(head) - ansi.StringWidth(tail)
+	if width > barMax {
+		width = barMax
+	}
+	if width < barMin {
+		// No room for a scale: the number still says everything the bar would.
+		return row{clip(fmt.Sprintf("  %s%s", clip(label, 6), tail), w), budgetColour(win.Percent)}
+	}
+	return row{head + bar(win.Percent, width) + tail, budgetColour(win.Percent)}
 }
 
 // resetIn says how long is left rather than at what clock time, because a
@@ -230,16 +244,15 @@ func budgetRow(label string, win usage.Window) row {
 func resetIn(at, now time.Time) string {
 	d := at.Sub(now)
 	if d <= 0 {
-		return "resetting"
+		return "now"
 	}
 	if d >= 24*time.Hour {
-		days := int(d.Hours()) / 24
-		return fmt.Sprintf("%dd %dh left", days, int(d.Hours())%24)
+		return fmt.Sprintf("%dd%dh", int(d.Hours())/24, int(d.Hours())%24)
 	}
 	if d >= time.Hour {
-		return fmt.Sprintf("%dh %02dm left", int(d.Hours()), int(d.Minutes())%60)
+		return fmt.Sprintf("%dh%02dm", int(d.Hours()), int(d.Minutes())%60)
 	}
-	return fmt.Sprintf("%dm left", max(int(d.Minutes()), 1))
+	return fmt.Sprintf("%dm", max(int(d.Minutes()), 1))
 }
 
 func budgetColour(percent float64) color.Color {
@@ -252,17 +265,17 @@ func budgetColour(percent float64) color.Color {
 	return fgCalm
 }
 
-// bar draws a share as a filled strip.
-func bar(percent float64) string {
-	filled := int(percent/100*barW + 0.5)
+// bar draws a share as a filled strip of the given width.
+func bar(percent float64, width int) string {
+	filled := int(percent/100*float64(width) + 0.5)
 	if filled < 0 {
 		filled = 0
 	}
-	if filled > barW {
-		filled = barW
+	if filled > width {
+		filled = width
 	}
-	out := make([]rune, 0, barW)
-	for i := 0; i < barW; i++ {
+	out := make([]rune, 0, width)
+	for i := 0; i < width; i++ {
 		if i < filled {
 			out = append(out, '█')
 			continue

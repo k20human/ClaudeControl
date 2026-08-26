@@ -138,8 +138,9 @@ func TestTheAccountBudgetsAppearWithTheirBars(t *testing.T) {
 		}
 	}
 	// Time left, not a clock time: a clock time means nothing without another
-	// clock to compare it against.
-	if !strings.Contains(out, "h left") || !strings.Contains(out, "d ") {
+	// clock to compare it against. The five-hour budget refills in under a
+	// day, the weekly one in two.
+	if !strings.Contains(out, "↻ 1h") || !strings.Contains(out, "↻ 2d") {
 		t.Errorf("the panel does not say how long is left:\n%s", out)
 	}
 }
