@@ -1,0 +1,8 @@
+layout:
+  split: horizontal
+  ratios: [2, 1]
+  children:
+    - module: term
+      options: { cmd: [sh, -c, "printf 'P>'; cat"] }
+    - module: hologram
+      options: { style: sphere }

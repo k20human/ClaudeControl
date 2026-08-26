@@ -1,14 +1,16 @@
-# Two Claude Code sessions side by side, 60/40.
+# Two Claude Code sessions with the hologram beside them.
 # Run with: ./bin/claudecontrol -config examples/two-claude.yaml
 layout:
   split: horizontal
-  ratios: [3, 2]
+  ratios: [3, 2, 2]
   children:
-    - module: term
+    - module: claude
       options:
-        cmd: [claude]
         dir: ~/GolandProjects/ClaudeControl
-    - module: term
+    - module: claude
       options:
-        cmd: [claude]
         dir: ~/DEV
+    - stack:
+        - module: hologram
+          options: { style: sphere }
+        - module: sessions

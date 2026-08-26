@@ -1,0 +1,13 @@
+# The hologram on its own, for looking at.
+# Run with: ./bin/claudecontrol -config examples/hologram.yaml
+# Styles: sphere, ring, avatar.
+layout:
+  module: hologram
+  options:
+    style: sphere
+    # Validated by eye on 2026-08-25; see proto/hologram/VALIDATED.md.
+    speed: 0.18
+    trail: 0.90
+    density: 1.0
+    rotation: 0.09
+    breath: 9.0

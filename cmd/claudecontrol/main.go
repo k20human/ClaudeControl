@@ -12,6 +12,7 @@ import (
 
 	// Register the built-in module types.
 	_ "claudecontrol/modules/claude"
+	_ "claudecontrol/modules/hologram"
 	_ "claudecontrol/modules/term"
 )
 
