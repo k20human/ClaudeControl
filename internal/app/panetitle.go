@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"claudecontrol/internal/layout"
+	"claudecontrol/internal/module"
 	"claudecontrol/internal/render"
 	"claudecontrol/internal/transcript"
 )
@@ -24,15 +25,55 @@ var (
 	titleDetailFg = color.RGBA{R: 0x9a, G: 0xa8, B: 0xbd, A: 0xff}
 )
 
-// contentRect is the part of a pane that belongs to its module. The top row is
-// the title, so every module is handed a rectangle one row shorter than the
-// pane — including for Resize, or the guest would draw a line the pane cannot
-// show.
-func contentRect(r layout.Rect) layout.Rect {
-	if r.H <= titleH {
+// paneTitleH is how many rows this pane gives up to its title. A module that
+// wants no title keeps the whole pane.
+func (a *App) paneTitleH(id layout.PaneID) int {
+	if t, ok := a.modules[id].(module.Titler); ok {
+		if _, want := t.Title(); !want {
+			return 0
+		}
+	}
+	return titleH
+}
+
+// contentRect is the part of a pane that belongs to its module — including for
+// Resize, or the guest would draw a line the pane cannot show.
+func (a *App) contentRect(id layout.PaneID) layout.Rect {
+	return shrinkTop(a.rects[id], a.paneTitleH(id))
+}
+
+// shrinkTop takes n rows off the top of a rectangle, never below nothing.
+func shrinkTop(r layout.Rect, n int) layout.Rect {
+	if n <= 0 {
+		return r
+	}
+	if r.H <= n {
 		return layout.Rect{X: r.X, Y: r.Y, W: r.W}
 	}
-	return layout.Rect{X: r.X, Y: r.Y + titleH, W: r.W, H: r.H - titleH}
+	return layout.Rect{X: r.X, Y: r.Y + n, W: r.W, H: r.H - n}
+}
+
+// paneName is what to call a pane. The name Claude Code gave the session wins
+// over anything else: it is the one a person recognises.
+func (a *App) paneName(id layout.PaneID) string {
+	if sm, ok := a.modules[id].(interface{ SessionID() string }); ok {
+		if n := a.sessionName(sm.SessionID()); n != "" {
+			return n
+		}
+	}
+	if t, ok := a.modules[id].(module.Titler); ok {
+		if name, want := t.Title(); want && name != "" {
+			return name
+		}
+	}
+	return a.moduleName(id)
+}
+
+// sessionName is the name reported for a session, if one has been.
+func (a *App) sessionName(id string) string {
+	a.usageMu.RLock()
+	defer a.usageMu.RUnlock()
+	return a.names[id]
 }
 
 // drawPaneTitles paints one title row per pane.
@@ -42,7 +83,7 @@ func contentRect(r layout.Rect) layout.Rect {
 // you should never have to look for.
 func (a *App) drawPaneTitles(scr uv.Screen) {
 	for id, r := range a.rects {
-		if r.H < titleH || r.W <= 0 {
+		if r.H < titleH || r.W <= 0 || a.paneTitleH(id) == 0 {
 			continue
 		}
 		fg, bg := color.Color(titleFg), color.Color(titleBg)
@@ -52,7 +93,7 @@ func (a *App) drawPaneTitles(scr uv.Screen) {
 		}
 		render.Fill(scr, uv.Rect(r.X, r.Y, r.W, titleH), bg)
 
-		name := a.moduleName(id)
+		name := a.paneName(id)
 		render.Text(scr, r.X+1, r.Y, truncate(name, r.W-2), fg, bg)
 		used := ansi.StringWidth(name) + 2
 

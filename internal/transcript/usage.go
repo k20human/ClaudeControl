@@ -18,6 +18,15 @@ type SessionMetrics struct {
 	Metrics   Metrics
 }
 
+// NameTopic is where the name Claude Code gave a session is published.
+const NameTopic = "session.name"
+
+// SessionName ties that name to its session.
+type SessionName struct {
+	SessionID string
+	Name      string
+}
+
 // ShortModel drops the vendor prefix, which is the same on every line and
 // tells you nothing.
 func ShortModel(model string) string {

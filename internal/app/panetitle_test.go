@@ -62,3 +62,32 @@ func TestClickingATitleDoesNotReachTheGuest(t *testing.T) {
 		t.Errorf("the first content row went from %q to %q — the click reached the guest", quiet, row)
 	}
 }
+
+// A pane that is a picture wants no label above it: the hologram keeps every
+// row it was given, and only its neighbour is titled.
+func TestTheHologramHasNoTitleRow(t *testing.T) {
+	const W, H = 80, 16
+	_, snap := run(t, "testdata/holo-term.yaml", W, H)
+	waitForRow(t, snap, paneRow0, "L>")
+
+	g := snap()
+	if got := columnOf(g.row(0), "hologram"); got >= 0 {
+		t.Errorf("the hologram pane is titled at column %d: %q", got, g.row(0))
+	}
+	if columnOf(g.row(0), "term") < 0 {
+		t.Errorf("its neighbour lost its title: %q", g.row(0))
+	}
+
+	// And it draws into the row its neighbour gives up.
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		row := []rune(snap().row(0))
+		for i := W / 2; i < len(row); i++ {
+			if row[i] >= '⠀' && row[i] <= '⣿' {
+				return
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Errorf("nothing braille reached row 0 of the hologram pane: %q", snap().row(0))
+}

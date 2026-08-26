@@ -83,7 +83,7 @@ func (a *App) buildStatusBar() []button {
 	// appeared then would shove the buttons sideways under the pointer.
 	a.barUsageX, a.barUsageW = 0, 0
 	if a.hasAccountSource() {
-		a.barUsageW = ansi.StringWidth("5h 100%  wk 100%")
+		a.barUsageW = ansi.StringWidth("usage 5h 100% · 7d 100%")
 		a.barUsageX = a.barCountX - 2 - a.barUsageW
 		limit = a.barUsageX - 1
 	}
@@ -174,7 +174,9 @@ func (a *App) drawBarUsage(scr uv.Screen, y int) {
 		render.Text(scr, a.barUsageX, y, "usage unavailable", barQuitFg, barBg)
 		return
 	}
-	label := fmt.Sprintf("5h %3.0f%%  wk %3.0f%%", r.Snapshot.FiveHour.Percent, r.Snapshot.SevenDay.Percent)
+	// Named, because a bare "5h 42%" says nothing about what is at 42%.
+	label := fmt.Sprintf("usage 5h %.0f%% · 7d %.0f%%",
+		r.Snapshot.FiveHour.Percent, r.Snapshot.SevenDay.Percent)
 	x := a.barUsageX + a.barUsageW - ansi.StringWidth(label)
 	fg := barCountFg
 	if worst := math.Max(r.Snapshot.FiveHour.Percent, r.Snapshot.SevenDay.Percent); worst >= 85 {

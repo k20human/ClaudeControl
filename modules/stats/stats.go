@@ -185,11 +185,24 @@ func (m *Module) Draw(scr uv.Screen, area uv.Rectangle) {
 	}
 }
 
+// wideAt is the width below which labels are abbreviated. Above it there is
+// room to say what a number means, which is worth more than the room it costs.
+const wideAt = 46
+
 // rows is everything the panel has to say, in order.
 func (m *Module) rows(w int) []row {
-	out := []row{{"account", fgHead}}
+	head := "plan usage"
+	if w >= wideAt {
+		head = "plan usage — share used, and when it refills"
+	}
+	out := []row{{head, fgHead}}
 	out = append(out, m.accountRows(w)...)
-	out = append(out, row{"", fgText}, row{"sessions", fgHead})
+
+	head = "sessions"
+	if w >= wideAt {
+		head = "sessions — tokens carried by the last turn"
+	}
+	out = append(out, row{"", fgText}, row{head, fgHead})
 	out = append(out, m.sessionRows(w)...)
 	return out
 }
@@ -212,10 +225,10 @@ func (m *Module) accountRows(w int) []row {
 	}
 	rows := []row{
 		budgetRow("5h", r.Snapshot.FiveHour, w),
-		budgetRow("weekly", r.Snapshot.SevenDay, w),
+		budgetRow("week", r.Snapshot.SevenDay, w),
 	}
 	for _, s := range r.Snapshot.Scoped {
-		rows = append(rows, budgetRow(s.Model, s.Window, w))
+		rows = append(rows, budgetRow("week "+s.Model, s.Window, w))
 	}
 	return rows
 }
@@ -223,10 +236,19 @@ func (m *Module) accountRows(w int) []row {
 // budgetRow renders one budget: its share as a number, when it refills, and a
 // bar filling whatever room is left.
 func budgetRow(label string, win usage.Window, w int) row {
-	head := fmt.Sprintf("  %-6s ", clip(label, 6))
+	labelW := 6
+	if w >= wideAt {
+		labelW = 11
+	}
+	head := fmt.Sprintf("  %-*s ", labelW, clip(label, labelW))
 	tail := fmt.Sprintf(" %3.0f%%", win.Percent)
 	if win.Resets {
-		tail += "  ↻ " + resetIn(win.ResetsAt, time.Now())
+		left := resetIn(win.ResetsAt, time.Now())
+		if w >= wideAt {
+			tail += "   refills in " + left
+		} else {
+			tail += "  ↻ " + left
+		}
 	}
 	width := w - ansi.StringWidth(head) - ansi.StringWidth(tail)
 	if width > barMax {
@@ -234,7 +256,7 @@ func budgetRow(label string, win usage.Window, w int) row {
 	}
 	if width < barMin {
 		// No room for a scale: the number still says everything the bar would.
-		return row{clip(fmt.Sprintf("  %s%s", clip(label, 6), tail), w), budgetColour(win.Percent)}
+		return row{clip(fmt.Sprintf("  %s%s", clip(label, labelW), tail), w), budgetColour(win.Percent)}
 	}
 	return row{head + bar(win.Percent, width) + tail, budgetColour(win.Percent)}
 }
@@ -314,7 +336,7 @@ func sessionRow(e *pool.Entry, seen map[string]transcript.Metrics, w int) row {
 	if name == "" && e.Session != nil {
 		name = string(e.Session.ID)
 	}
-	line := "  " + clip(name, 16)
+	line := fmt.Sprintf("  %-12s", clip(name, 12))
 	var id session.ID
 	if e.Session != nil {
 		id = e.Session.ID
@@ -325,15 +347,31 @@ func sessionRow(e *pool.Entry, seen map[string]transcript.Metrics, w int) row {
 		// not the same as reporting zero.
 		return row{line + "  — no turn yet", fgMuted}
 	}
-	line += fmt.Sprintf("  %-10s %8s ctx", clip(transcript.ShortModel(met.Model), 10),
-		transcript.HumanTokens(met.Context))
+	ctx, cached, thinking := "ctx", "cached", "think"
+	if w >= wideAt {
+		ctx, cached, thinking = "context", "from cache", "thinking"
+	}
+	line += fmt.Sprintf("  %-9s %6s %s", clip(transcript.ShortModel(met.Model), 9),
+		transcript.HumanTokens(met.Context), ctx)
+
+	// The remaining figures are added only if they fit whole. A row ending in
+	// "1.2k thinki…" teaches nothing that dropping it would not.
 	if met.CacheRate > 0 {
-		line += fmt.Sprintf("  %3.0f%% cache", met.CacheRate*100)
+		line = extend(line, fmt.Sprintf("  %.0f%% %s", met.CacheRate*100, cached), w)
 	}
 	if met.Thinking > 0 {
-		line += "  " + transcript.HumanTokens(met.Thinking) + " think"
+		line = extend(line, "  "+transcript.HumanTokens(met.Thinking)+" "+thinking, w)
 	}
 	return row{clip(line, w), fgText}
+}
+
+// extend appends a segment when the whole of it fits, and otherwise leaves the
+// line as it was.
+func extend(line, segment string, w int) string {
+	if ansi.StringWidth(line)+ansi.StringWidth(segment) > w {
+		return line
+	}
+	return line + segment
 }
 
 // clip shortens text to a width, marking that it was shortened.

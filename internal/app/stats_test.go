@@ -51,14 +51,14 @@ func TestAStatsPaneShowsTheAccountBudgetInTheBar(t *testing.T) {
 	waitForRow(t, snap, paneRow0, "L>")
 
 	// In the pane, with its bar and how long is left.
-	waitForAnywhere(t, snap, "5h")
+	waitForAnywhere(t, snap, "plan usage")
 	waitForAnywhere(t, snap, "37%")
-	waitForAnywhere(t, snap, "weekly")
+	waitForAnywhere(t, snap, "week")
 
 	// And reprised in the status bar at the bottom.
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		if row := snap().row(H - 1); columnOf(row, "5h  37%") >= 0 {
+		if row := snap().row(H - 1); columnOf(row, "usage 5h 37% · 7d 14%") >= 0 {
 			return
 		}
 		time.Sleep(50 * time.Millisecond)

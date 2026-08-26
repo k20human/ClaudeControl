@@ -6,15 +6,20 @@ import (
 	"claudecontrol/internal/layout"
 )
 
-func TestContentRectGivesUpTheTitleRow(t *testing.T) {
-	got := contentRect(layout.Rect{X: 4, Y: 2, W: 20, H: 6})
+func TestShrinkTopGivesUpTheTitleRow(t *testing.T) {
+	got := shrinkTop(layout.Rect{X: 4, Y: 2, W: 20, H: 6}, titleH)
 	want := layout.Rect{X: 4, Y: 3, W: 20, H: 5}
 	if got != want {
-		t.Errorf("contentRect = %v, want %v", got, want)
+		t.Errorf("shrinkTop = %v, want %v", got, want)
+	}
+	// A module that wants no title keeps every row it was given.
+	full := layout.Rect{X: 4, Y: 2, W: 20, H: 6}
+	if got := shrinkTop(full, 0); got != full {
+		t.Errorf("shrinkTop(_, 0) = %v, want %v", got, full)
 	}
 	// A pane too short for both keeps its origin and has no content, rather
 	// than reporting a negative height that callers would have to guard.
-	if got := contentRect(layout.Rect{X: 1, Y: 1, W: 8, H: 1}); got.H != 0 {
+	if got := shrinkTop(layout.Rect{X: 1, Y: 1, W: 8, H: 1}, titleH); got.H != 0 {
 		t.Errorf("a one-row pane leaves %d content rows, want 0", got.H)
 	}
 }

@@ -44,6 +44,7 @@ type App struct {
 	// can show it without subscribing to the bus per pane.
 	usageMu sync.RWMutex
 	usage   map[string]transcript.Metrics
+	names   map[string]string
 
 	// binary is our own executable, which sessions invoke in --hook mode.
 	binary string
@@ -333,7 +334,7 @@ func (a *App) relayout() {
 		if prev, had := old[id]; had && prev.W == r.W && prev.H == r.H {
 			continue
 		}
-		c := contentRect(r)
+		c := shrinkTop(r, a.paneTitleH(id))
 		_ = m.Resize(c.W, c.H)
 	}
 	a.saveSnapshot()
@@ -355,12 +356,12 @@ func (a *App) draw() {
 			}
 		}
 	}
-	for id, r := range a.rects {
+	for id := range a.rects {
 		m, ok := a.modules[id]
 		if !ok {
 			continue
 		}
-		c := contentRect(r)
+		c := a.contentRect(id)
 		area := uv.Rect(c.X, c.Y, c.W, c.H)
 		m.Draw(a.scr, area)
 		if code, dead := a.exitedCode(id); dead {
@@ -397,7 +398,7 @@ func (a *App) cursorTarget() (x, y int, visible bool) {
 	if !visible {
 		return 0, 0, false
 	}
-	r := contentRect(a.rects[a.focus])
+	r := a.contentRect(a.focus)
 	return r.X + cx, r.Y + cy, true
 }
 

@@ -111,3 +111,30 @@ func TestCloseIsSafeWhileNobodyReads(t *testing.T) {
 	tl.Close()
 	tl.Close() // idempotent
 }
+
+// The name Claude Code gives a session arrives on a line of its own, with no
+// turn attached. It is what a person recognises the session by, so it has to
+// survive parsing.
+func TestAnAITitleLineCarriesTheName(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "t.jsonl")
+	body := `{"type":"ai-title","aiTitle":"Interface visuelle","sessionId":"abc"}` + "\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	tl := transcript.Tail(path, 20*time.Millisecond)
+	defer tl.Close()
+
+	select {
+	case line := <-tl.Lines():
+		if line.Type != "ai-title" {
+			t.Errorf("type = %q", line.Type)
+		}
+		if line.AITitle != "Interface visuelle" {
+			t.Errorf("AITitle = %q, want %q", line.AITitle, "Interface visuelle")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("no line arrived")
+	}
+}

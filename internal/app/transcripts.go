@@ -30,6 +30,18 @@ func (a *App) followTranscript(sessionID, path string) {
 	windows := transcript.DefaultWindows()
 	go func() {
 		for line := range tl.Lines() {
+			if line.AITitle != "" {
+				a.usageMu.Lock()
+				if a.names == nil {
+					a.names = make(map[string]string)
+				}
+				a.names[sessionID] = line.AITitle
+				a.usageMu.Unlock()
+				a.bus.PublishState(transcript.NameTopic, transcript.SessionName{
+					SessionID: sessionID, Name: line.AITitle,
+				})
+				a.Wake()
+			}
 			if line.Type != "assistant" {
 				continue
 			}

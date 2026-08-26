@@ -132,7 +132,7 @@ func TestTheAccountBudgetsAppearWithTheirBars(t *testing.T) {
 		return strings.Contains(out, "37%")
 	})
 
-	for _, want := range []string{"5h", "92%", "weekly", "Fable", "█", "░"} {
+	for _, want := range []string{"5h", "92%", "week", "Fable", "█", "░"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the panel does not mention %q:\n%s", want, out)
 		}
@@ -140,8 +140,19 @@ func TestTheAccountBudgetsAppearWithTheirBars(t *testing.T) {
 	// Time left, not a clock time: a clock time means nothing without another
 	// clock to compare it against. The five-hour budget refills in under a
 	// day, the weekly one in two.
-	if !strings.Contains(out, "↻ 1h") || !strings.Contains(out, "↻ 2d") {
+	if !strings.Contains(out, "refills in 1h") || !strings.Contains(out, "refills in 2d") {
 		t.Errorf("the panel does not say how long is left:\n%s", out)
+	}
+
+	// Narrow, the same facts abbreviate rather than disappear.
+	narrow := paint(t, m, 34, 12)
+	for _, want := range []string{"5h", "37%", "↻ 1h", "week"} {
+		if !strings.Contains(narrow, want) {
+			t.Errorf("a narrow panel drops %q:\n%s", want, narrow)
+		}
+	}
+	if strings.Contains(narrow, "refills in") {
+		t.Errorf("a narrow panel kept the long wording:\n%s", narrow)
 	}
 }
 
@@ -217,7 +228,7 @@ func TestASessionShowsItsLastTurn(t *testing.T) {
 
 	// Before any turn, the session is listed but reports nothing rather than
 	// zero.
-	out := paint(t, m, 70, 12)
+	out := paint(t, m, 80, 12)
 	if !strings.Contains(out, "worker") || !strings.Contains(out, "no turn yet") {
 		t.Fatalf("a session with no turn is not listed plainly:\n%s", out)
 	}
@@ -231,12 +242,22 @@ func TestASessionShowsItsLastTurn(t *testing.T) {
 	<-woke
 
 	waitFor(t, "the turn", func() bool {
-		out = paint(t, m, 70, 12)
-		return strings.Contains(out, "34k ctx")
+		out = paint(t, m, 80, 12)
+		return strings.Contains(out, "34k context")
 	})
-	for _, want := range []string{"worker", "opus-5", "41% cache", "1.2k think"} {
+	for _, want := range []string{"worker", "opus-5", "41% from cache", "1.2k thinking"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the row does not mention %q:\n%s", want, out)
 		}
+	}
+
+	// Too narrow for everything, the least important figure is dropped whole
+	// rather than truncated into a word that teaches nothing.
+	tight := paint(t, m, 68, 12)
+	if !strings.Contains(tight, "34k context") {
+		t.Errorf("a tight row lost the context count:\n%s", tight)
+	}
+	if strings.Contains(tight, "thinki…") || strings.Contains(tight, "cach…") {
+		t.Errorf("a tight row was cut mid-word:\n%s", tight)
 	}
 }

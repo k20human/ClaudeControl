@@ -137,6 +137,10 @@ func rank(s pool.State) int {
 	}
 }
 
+// Title reports that the hologram wants no title row. It is a picture; a
+// label above it would say what you can already see and cost it a row.
+func (m *Module) Title() (string, bool) { return "", false }
+
 // Resize passes the new size on.
 func (m *Module) Resize(w, h int) error {
 	m.cols, m.rows = w, h

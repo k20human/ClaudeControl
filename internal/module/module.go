@@ -49,6 +49,15 @@ type Cursorer interface {
 	Cursor() (x, y int, visible bool)
 }
 
+// Titler is implemented by modules that have something better to be called
+// than the name they were registered under — or nothing at all.
+type Titler interface {
+	// Title is what belongs in the pane's title row. Reporting false asks for
+	// no title row: the module keeps the whole pane, which is what a purely
+	// visual pane wants.
+	Title() (string, bool)
+}
+
 // Provider is implemented by modules that let you change something. The menu
 // is built from what they publish, so a module gains an editable setting by
 // describing it rather than by drawing a widget.

@@ -193,7 +193,7 @@ func (a *App) handleMouse(ev uv.MouseEvent, m uv.Mouse) {
 	// A click on the title row belongs to the chrome, not to the guest: the
 	// pane is already focused by the time we get here, and that is all the
 	// title is for.
-	r := contentRect(a.rects[id])
+	r := a.contentRect(id)
 	if m.Y < r.Y {
 		return
 	}
