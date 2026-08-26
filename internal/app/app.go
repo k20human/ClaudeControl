@@ -74,7 +74,8 @@ type App struct {
 	moduleNames map[layout.PaneID]string
 	status      string
 
-	palette *paletteState
+	palette  *paletteState
+	paneDrag *paneDragState
 
 	// layoutChanged records whether the arrangement differs from the file.
 	// Saving takes the narrow path while it is false, which is what keeps the
@@ -353,6 +354,7 @@ func (a *App) draw() {
 	a.drawStatusBar(a.scr)
 	a.drawSessionPanel(a.scr)
 	a.drawSettingsPanel(a.scr)
+	a.drawPaneDrag(a.scr)
 	a.drawPalette(a.scr)
 	a.drawOverlay(a.scr)
 
