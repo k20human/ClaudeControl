@@ -34,11 +34,34 @@ var bindings = []binding{
 	{[]string{"alt+s"}, "alt+s", "reset every split to equal shares", func(a *App) { a.evenOutSplits() }},
 	{[]string{"alt+space"}, "alt+space", "sessions", func(a *App) { a.toggleSessionPanel() }},
 	{[]string{"alt+,"}, "alt+,", "settings", func(a *App) { a.toggleSettingsPanel() }},
+	{[]string{"alt+/"}, "alt+/", "command palette", func(a *App) { a.togglePalette() }},
 	{[]string{"alt+g"}, "alt+g", "this panel", func(a *App) { a.overlay = overlayHelp }},
 	{[]string{"alt+q"}, "alt+q", "quit", func(a *App) { a.overlay = overlayQuit }},
 }
 
 func (a *App) handleKey(e uv.KeyPressEvent) {
+	// The palette takes every keystroke: it is a text field, so a plain letter
+	// has to reach the query rather than an action. Only escape and its own
+	// binding close it.
+	if a.palette != nil {
+		key := e.Key()
+		switch {
+		case e.MatchString("esc", "alt+/"):
+			a.togglePalette()
+		case key.Code == uv.KeyEnter:
+			a.paletteChoose()
+		case key.Code == uv.KeyBackspace:
+			a.paletteBackspace()
+		case key.Code == uv.KeyUp:
+			a.paletteMove(-1)
+		case key.Code == uv.KeyDown:
+			a.paletteMove(1)
+		case key.Text != "":
+			a.paletteType(key.Text)
+		}
+		return
+	}
+
 	// The menu takes the keyboard while it is open. Plain arrows adjust,
 	// because a modifier on every nudge would make tuning a slider a chore.
 	if a.settingsPanel != nil {
