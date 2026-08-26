@@ -213,6 +213,12 @@ func (a *App) Run() error {
 
 	a.scr.EnterAltScreen()
 	a.scr.HideCursor()
+	// The hardware cursor stays hidden for good: the cursor is painted into
+	// the cell by drawCursor. Mode 2026 makes each frame atomic, which is
+	// what keeps an animated pane from tearing, and it also spares the
+	// terminal the hide/show pair ultraviolet otherwise brackets every frame
+	// with. Terminals that do not know the mode ignore it.
+	a.scr.SetSynchronizedUpdates(true)
 	// Full motion tracking. It costs one event per hovered cell, which is the
 	// price of highlighting a divider before the pointer is pressed; repaints
 	// are coalesced and only a couple of cells ever change.
@@ -357,20 +363,59 @@ func (a *App) draw() {
 	a.drawPaneDrag(a.scr)
 	a.drawPalette(a.scr)
 	a.drawOverlay(a.scr)
+	a.drawCursor(a.scr)
+}
 
-	a.scr.HideCursor()
+// cursorTarget is where the cursor belongs this frame, in screen coordinates,
+// and whether it belongs anywhere at all. A panel covers the panes, so while
+// one is open the cursor has no business being shown.
+func (a *App) cursorTarget() (x, y int, visible bool) {
 	if a.overlay != overlayNone || a.sessionPanel != nil || a.settingsPanel != nil || a.palette != nil {
+		return 0, 0, false
+	}
+	m, ok := a.modules[a.focus]
+	if !ok {
+		return 0, 0, false
+	}
+	c, ok := m.(module.Cursorer)
+	if !ok {
+		return 0, 0, false
+	}
+	cx, cy, visible := c.Cursor()
+	if !visible {
+		return 0, 0, false
+	}
+	r := a.rects[a.focus]
+	return r.X + cx, r.Y + cy, true
+}
+
+// drawCursor paints the cursor into the cell instead of asking the terminal
+// for its own.
+//
+// The hardware cursor cannot be used here. Ultraviolet emits the cursor move
+// at the head of a frame's byte stream and the cell repainting after it, so
+// whatever the application asks for is overwritten by the paint that follows —
+// harmless for a still screen, but a pane that animates repaints every frame
+// and the cursor was measured parked in the hologram, sixty times a second,
+// never once where it was asked to be.
+//
+// Reversing the cell is under our control, lands exactly where the guest put
+// its cursor, and costs nothing. The trade is that it does not blink and is
+// always a block, whatever shape the guest asked for. The attribute is
+// toggled rather than set so that a cursor sitting on already-reversed text
+// still stands out.
+func (a *App) drawCursor(scr uv.Screen) {
+	x, y, visible := a.cursorTarget()
+	if !visible {
 		return
 	}
-	if m, ok := a.modules[a.focus]; ok {
-		if c, ok := m.(module.Cursorer); ok {
-			if x, y, visible := c.Cursor(); visible {
-				r := a.rects[a.focus]
-				a.scr.SetCursorPosition(r.X+x, r.Y+y)
-				a.scr.ShowCursor()
-			}
-		}
+	c := scr.CellAt(x, y)
+	if c == nil {
+		return
 	}
+	cell := *c
+	cell.Style.Attrs ^= uv.AttrReverse
+	scr.SetCell(x, y, &cell)
 }
 
 // handle dispatches one terminal event.
