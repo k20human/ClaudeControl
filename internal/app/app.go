@@ -99,6 +99,9 @@ type App struct {
 	barUsageX int
 	barUsageW int
 
+	// barUsageForm is which of usageForms the reserved slot can hold.
+	barUsageForm int
+
 	// pointerX and pointerY are the last reported pointer position, so a panel
 	// button can light up under it the way a status-bar button does.
 	pointerX, pointerY int
@@ -264,6 +267,13 @@ func (a *App) Run() error {
 	ticker := time.NewTicker(redrawInterval)
 	defer ticker.Stop()
 
+	// A countdown is computed when it is drawn, and nothing else on a still
+	// screen asks for a redraw. Without this the "refills in" figure would sit
+	// unchanged until the next reading — up to three minutes wrong, which is
+	// worse than a coarser unit honestly kept.
+	countdown := time.NewTicker(time.Minute)
+	defer countdown.Stop()
+
 	dirty := true
 	for !a.quit {
 		select {
@@ -275,6 +285,12 @@ func (a *App) Run() error {
 			dirty = true
 		case <-a.wake:
 			dirty = true
+		case <-countdown.C:
+			// Armed, never cleared: whatever else asked for a redraw still
+			// gets one.
+			if a.hasAccountSource() {
+				dirty = true
+			}
 		case <-ticker.C:
 			if !dirty {
 				continue

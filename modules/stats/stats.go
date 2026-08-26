@@ -243,7 +243,7 @@ func budgetRow(label string, win usage.Window, w int) row {
 	head := fmt.Sprintf("  %-*s ", labelW, clip(label, labelW))
 	tail := fmt.Sprintf(" %3.0f%%", win.Percent)
 	if win.Resets {
-		left := resetIn(win.ResetsAt, time.Now())
+		left := usage.Until(win.ResetsAt, time.Now())
 		if w >= wideAt {
 			tail += "   refills in " + left
 		} else {
@@ -259,22 +259,6 @@ func budgetRow(label string, win usage.Window, w int) row {
 		return row{clip(fmt.Sprintf("  %s%s", clip(label, labelW), tail), w), budgetColour(win.Percent)}
 	}
 	return row{head + bar(win.Percent, width) + tail, budgetColour(win.Percent)}
-}
-
-// resetIn says how long is left rather than at what clock time, because a
-// clock time has to be compared against another clock to mean anything.
-func resetIn(at, now time.Time) string {
-	d := at.Sub(now)
-	if d <= 0 {
-		return "now"
-	}
-	if d >= 24*time.Hour {
-		return fmt.Sprintf("%dd%dh", int(d.Hours())/24, int(d.Hours())%24)
-	}
-	if d >= time.Hour {
-		return fmt.Sprintf("%dh%02dm", int(d.Hours()), int(d.Minutes())%60)
-	}
-	return fmt.Sprintf("%dm", max(int(d.Minutes()), 1))
 }
 
 func budgetColour(percent float64) color.Color {

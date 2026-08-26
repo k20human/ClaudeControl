@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image/color"
 	"math"
+	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
@@ -78,14 +79,28 @@ func (a *App) buildStatusBar() []button {
 	// The account budget sits beside the count, and only when something is
 	// already fetching it: reserving the space unconditionally would shorten
 	// the bar for everyone who never asked for the figure.
+	//
 	// Reserved on the presence of a source, not on a reading: the first
 	// reading arrives seconds after the layout is settled, and a slot that
 	// appeared then would shove the buttons sideways under the pointer.
-	a.barUsageX, a.barUsageW = 0, 0
+	//
+	// The widest shape that still leaves room for the buttons that matter
+	// wins, so the figure never costs you the way back to the rest of the
+	// interface.
+	a.barUsageX, a.barUsageW, a.barUsageForm = 0, 0, 0
 	if a.hasAccountSource() {
-		a.barUsageW = ansi.StringWidth("usage 5h 100% · 7d 100%")
-		a.barUsageX = a.barCountX - 2 - a.barUsageW
-		limit = a.barUsageX - 1
+		essential := 1
+		for _, it := range items[:min(len(items), essentialButtons)] {
+			essential += ansi.StringWidth(it.label) + 3
+		}
+		for form, sample := range usageForms {
+			w := ansi.StringWidth(sample)
+			if x := a.barCountX - 2 - w; x >= essential {
+				a.barUsageX, a.barUsageW, a.barUsageForm = x, w, form
+				limit = x - 1
+				break
+			}
+		}
 	}
 
 	x := 1
@@ -174,15 +189,48 @@ func (a *App) drawBarUsage(scr uv.Screen, y int) {
 		render.Text(scr, a.barUsageX, y, "usage unavailable", barQuitFg, barBg)
 		return
 	}
-	// Named, because a bare "5h 42%" says nothing about what is at 42%.
-	label := fmt.Sprintf("usage 5h %.0f%% · 7d %.0f%%",
-		r.Snapshot.FiveHour.Percent, r.Snapshot.SevenDay.Percent)
+	label := a.usageLabel(r, time.Now())
 	x := a.barUsageX + a.barUsageW - ansi.StringWidth(label)
 	fg := barCountFg
 	if worst := math.Max(r.Snapshot.FiveHour.Percent, r.Snapshot.SevenDay.Percent); worst >= 85 {
 		fg = barQuitFg
 	}
 	render.Text(scr, x, y, label, fg, barBg)
+}
+
+// essentialButtons is how many of the status bar's buttons the budget figure
+// must never push off the bar.
+const essentialButtons = 4
+
+// usageForms are the shapes the budget reprise can take, widest first. They
+// are the widest text each shape can ever hold, not the text showing now: the
+// share and the countdown both change without the layout changing, and
+// reserving the current width would let a longer one grow into a button.
+var usageForms = []string{
+	"usage 5h 100% ↻ 99h59m · 7d 100% ↻ 9d23h",
+	"usage 5h 100% ↻ 99h59m · 7d 100%",
+	"usage 5h 100% · 7d 100%",
+	// Last resort: the five-hour window alone. It is the one that runs out
+	// first, and the word stays because a bare "5h 42%" says nothing about
+	// what is at 42%.
+	"usage 5h 100%",
+}
+
+// usageLabel writes the budgets in whichever shape was reserved. It is named
+// because a bare "5h 42%" says nothing about what is at 42%.
+func (a *App) usageLabel(r usage.Reading, now time.Time) string {
+	five := fmt.Sprintf("5h %.0f%%", r.Snapshot.FiveHour.Percent)
+	seven := fmt.Sprintf("7d %.0f%%", r.Snapshot.SevenDay.Percent)
+	if a.barUsageForm <= 1 && r.Snapshot.FiveHour.Resets {
+		five += " ↻ " + usage.Until(r.Snapshot.FiveHour.ResetsAt, now)
+	}
+	if a.barUsageForm >= 3 {
+		return "usage " + five
+	}
+	if a.barUsageForm == 0 && r.Snapshot.SevenDay.Resets {
+		seven += " ↻ " + usage.Until(r.Snapshot.SevenDay.ResetsAt, now)
+	}
+	return "usage " + five + " · " + seven
 }
 
 // hasAccountSource reports whether any pane is fetching the account's budgets.

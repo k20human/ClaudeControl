@@ -39,6 +39,23 @@ type Window struct {
 	Resets bool
 }
 
+// Until says how long is left before a budget refills, rather than at what
+// clock time it does: a clock time has to be compared against another clock to
+// mean anything.
+func Until(at, now time.Time) string {
+	d := at.Sub(now)
+	if d <= 0 {
+		return "now"
+	}
+	if d >= 24*time.Hour {
+		return fmt.Sprintf("%dd%dh", int(d.Hours())/24, int(d.Hours())%24)
+	}
+	if d >= time.Hour {
+		return fmt.Sprintf("%dh%02dm", int(d.Hours()), int(d.Minutes())%60)
+	}
+	return fmt.Sprintf("%dm", max(int(d.Minutes()), 1))
+}
+
 // Scoped is a budget that applies to one model rather than to everything.
 type Scoped struct {
 	Window
