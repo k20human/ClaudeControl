@@ -2,11 +2,14 @@ package tabs
 
 import (
 	"image/color"
+	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 
+	"claudecontrol/internal/indicator"
 	"claudecontrol/internal/module"
+	"claudecontrol/internal/pool"
 	"claudecontrol/internal/render"
 )
 
@@ -35,11 +38,13 @@ func (m *Module) drawStrip(scr uv.Screen, area uv.Rectangle) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	now := time.Now()
 	x, hidden := area.Min.X, 0
 	for i, t := range m.tabs {
 		label := " " + t.title + " "
-		if t.waiting {
-			label = " " + t.title + " • "
+		if t.known {
+			// The same mark as everywhere else: one meaning per shape.
+			label = " " + indicator.Glyph(t.state, now) + " " + t.title + " "
 		}
 		w := ansi.StringWidth(label)
 		if x+w > area.Max.X {
@@ -51,8 +56,10 @@ func (m *Module) drawStrip(scr uv.Screen, area uv.Rectangle) {
 		switch {
 		case i == m.active:
 			fg, bg = fgActive, bgActive
-		case t.waiting:
-			fg = fgWaiting
+		case t.known && t.state != pool.StateIdle:
+			// A tab you are not looking at, whose session has something to
+			// say, is coloured by what it has to say.
+			fg = indicator.Colour(t.state)
 		}
 		render.Fill(scr, uv.Rect(x, area.Min.Y, w, 1), bg)
 		render.Text(scr, x, area.Min.Y, label, fg, bg)

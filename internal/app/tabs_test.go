@@ -2,10 +2,19 @@ package app_test
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/vt"
+
+	"claudecontrol/internal/indicator"
+	"claudecontrol/internal/pool"
+	"claudecontrol/internal/session"
 )
 
 // tabsConfig is a pane of tabs beside a shell, each tab printing its own
@@ -114,4 +123,140 @@ func TestTypingReachesTheTabOnScreen(t *testing.T) {
 		t.Error("a keystroke reached the tab that was not on screen")
 	}
 	time.Sleep(50 * time.Millisecond)
+}
+
+// The terminal's own tab is the one place you can see when the window is
+// behind something else, which is exactly when a session asking a question
+// would otherwise go unnoticed. Claude Code writes such a title for itself;
+// hosting it takes that away, so the application writes the summary instead.
+func TestTheHostTerminalTitleFollowsTheSessions(t *testing.T) {
+	const W, H = 90, 14
+	runtimeDir := t.TempDir()
+	bin := build(t)
+
+	var mu sync.Mutex
+	var titles []string
+	install := func(term vt.Terminal) {
+		e, ok := term.(*vt.SafeEmulator)
+		if !ok {
+			return
+		}
+		e.SetCallbacks(vt.Callbacks{Title: func(s string) {
+			mu.Lock()
+			titles = append(titles, s)
+			mu.Unlock()
+		}})
+	}
+
+	s, err := session.Start(session.Spec{
+		ID:        "claudecontrol",
+		Argv:      []string{bin, "-config", "testdata/one-pane.yaml"},
+		Dir:       ".",
+		Configure: install,
+		Env: []string{
+			"XDG_STATE_HOME=" + t.TempDir(),
+			"XDG_RUNTIME_DIR=" + runtimeDir,
+		},
+		Width:  W,
+		Height: H,
+	})
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	snap := func() *screen {
+		g := newScreen(W, H)
+		s.Term.Draw(g, uv.Rect(0, 0, W, H))
+		return g
+	}
+
+	waitForRow(t, snap, paneRow0, "P>")
+	socket := waitForSocket(t, runtimeDir)
+
+	sawTitle := func(want string) bool {
+		mu.Lock()
+		defer mu.Unlock()
+		for _, got := range titles {
+			if strings.Contains(got, want) {
+				return true
+			}
+		}
+		return false
+	}
+	waitTitle := func(want string) {
+		t.Helper()
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			if sawTitle(want) {
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		t.Fatalf("the terminal was never told %q; it was told %v", want, titles)
+	}
+
+	// Quiet: the name alone, with nothing claimed about it.
+	waitTitle("ClaudeControl")
+
+	hook := func(event, payload string) {
+		t.Helper()
+		cmd := exec.Command(bin, "--hook", event)
+		cmd.Env = append(os.Environ(), "CLAUDECONTROL_HOOK_SOCKET="+socket)
+		cmd.Stdin = strings.NewReader(payload)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("hook %s: %v\n%s", event, err, out)
+		}
+	}
+
+	hook("Notification", `{"session_id":"pane-1-1","cwd":"/tmp"}`)
+	waitTitle("1 waiting")
+	if !sawTitle(indicator.Glyph(pool.StateWaiting, time.Now())) {
+		t.Error("the title carries no mark for a session that is waiting")
+	}
+}
+
+// The same mark above a single pane. This is the plainest of the three places
+// it appears, and the one you look at while you work.
+func TestThePaneTitleCarriesTheSessionsMark(t *testing.T) {
+	const W, H = 90, 14
+	runtimeDir := t.TempDir()
+	bin := build(t)
+
+	s, err := session.Start(session.Spec{
+		ID:   "claudecontrol",
+		Argv: []string{bin, "-config", "testdata/one-pane.yaml"},
+		Dir:  ".",
+		Env: []string{
+			"XDG_STATE_HOME=" + t.TempDir(),
+			"XDG_RUNTIME_DIR=" + runtimeDir,
+		},
+		Width:  W,
+		Height: H,
+	})
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	snap := func() *screen {
+		g := newScreen(W, H)
+		s.Term.Draw(g, uv.Rect(0, 0, W, H))
+		return g
+	}
+
+	waitForRow(t, snap, paneRow0, "P>")
+	socket := waitForSocket(t, runtimeDir)
+
+	cmd := exec.Command(bin, "--hook", "Notification")
+	cmd.Env = append(os.Environ(), "CLAUDECONTROL_HOOK_SOCKET="+socket)
+	cmd.Stdin = strings.NewReader(`{"session_id":"pane-1-1","cwd":"/tmp"}`)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("hook: %v\n%s", err, out)
+	}
+
+	waitForRow(t, snap, 0, indicator.Glyph(pool.StateWaiting, time.Now()))
+	if row := snap().row(0); !strings.Contains(row, "term") {
+		t.Errorf("the mark replaced the name instead of joining it: %q", row)
+	}
 }

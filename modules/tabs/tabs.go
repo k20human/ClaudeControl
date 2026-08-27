@@ -43,9 +43,13 @@ type tab struct {
 	// was seen rather than on a table that could have drifted from it.
 	x, w int
 
-	// waiting marks a session asking for something while you are looking at
-	// another tab. Without it, a hidden tab is a session you have forgotten.
-	waiting bool
+	// state is what the session behind this tab is doing, so a tab you are not
+	// looking at can still say so. Without it, a hidden tab is a session you
+	// have forgotten.
+	state pool.State
+	// known is whether this tab holds a session at all. A hologram has no
+	// state and must not be given the mark for one.
+	known bool
 }
 
 // Module is the pane.
@@ -111,7 +115,7 @@ func (m *Module) Init(ctx module.Context) error {
 			if !ok {
 				continue
 			}
-			if m.noteWaiting(entries) && ctx.Wake != nil {
+			if m.noteStates(entries) && ctx.Wake != nil {
 				ctx.Wake()
 			}
 		}
@@ -119,31 +123,27 @@ func (m *Module) Init(ctx module.Context) error {
 	return nil
 }
 
-// noteWaiting marks the tabs whose session is asking for something, and
-// reports whether anything changed.
-func (m *Module) noteWaiting(entries []*pool.Entry) bool {
-	waiting := map[string]bool{}
+// noteStates records what each tab's session is doing, and reports whether
+// anything changed.
+func (m *Module) noteStates(entries []*pool.Entry) bool {
+	states := map[string]pool.State{}
 	for _, e := range entries {
-		if e.State == pool.StateWaiting && e.Session != nil {
-			waiting[string(e.Session.ID)] = true
+		if e.Session != nil {
+			states[string(e.Session.ID)] = e.State
 		}
 	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	changed := false
-	for i, t := range m.tabs {
-		want := false
-		if s, ok := t.mod.(interface{ SessionID() string }); ok {
-			want = waiting[s.SessionID()]
+	for _, t := range m.tabs {
+		s, ok := t.mod.(interface{ SessionID() string })
+		if !ok {
+			continue
 		}
-		// The tab you are looking at is not waiting for you in any useful
-		// sense: you are already there.
-		if i == m.active {
-			want = false
-		}
-		if t.waiting != want {
-			t.waiting, changed = want, true
+		st, held := states[s.SessionID()]
+		if t.state != st || t.known != held {
+			t.state, t.known, changed = st, held, true
 		}
 	}
 	return changed
@@ -211,8 +211,6 @@ func (m *Module) Select(i int) {
 		return
 	}
 	m.active = i
-	// Arriving at a tab answers it, whatever it was asking.
-	m.tabs[i].waiting = false
 	m.mu.Unlock()
 	if m.ctx.Wake != nil {
 		m.ctx.Wake()

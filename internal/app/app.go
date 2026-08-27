@@ -12,6 +12,7 @@ import (
 	"claudecontrol/internal/bus"
 	"claudecontrol/internal/config"
 	"claudecontrol/internal/hooks"
+	"claudecontrol/internal/indicator"
 	"claudecontrol/internal/layout"
 	"claudecontrol/internal/module"
 	"claudecontrol/internal/pool"
@@ -291,6 +292,12 @@ func (a *App) Run() error {
 	countdown := time.NewTicker(time.Minute)
 	defer countdown.Stop()
 
+	// The working mark turns, and a still screen asks for no redraw of its
+	// own. This ticks only while something is actually working, so an idle
+	// interface stays idle.
+	spin := time.NewTicker(indicator.Period)
+	defer spin.Stop()
+
 	dirty := true
 	for !a.quit {
 		select {
@@ -302,6 +309,10 @@ func (a *App) Run() error {
 			dirty = true
 		case <-a.wake:
 			dirty = true
+		case <-spin.C:
+			if a.anySessionWorking() {
+				dirty = true
+			}
 		case <-countdown.C:
 			// Armed, never cleared: whatever else asked for a redraw still
 			// gets one.
@@ -412,6 +423,7 @@ func (a *App) draw() {
 	a.drawPalette(a.scr)
 	a.drawOverlay(a.scr)
 	a.drawCursor(a.scr)
+	a.setWindowTitle()
 }
 
 // cursorTarget is where the cursor belongs this frame, in screen coordinates,
@@ -465,6 +477,56 @@ func (a *App) drawCursor(scr uv.Screen) {
 	cell := *c
 	cell.Style.Attrs ^= uv.AttrReverse
 	scr.SetCell(x, y, &cell)
+}
+
+// windowTitle summarises every session for the terminal running this
+// application.
+//
+// The terminal's own tab is the one place you can see when the window is
+// behind something else, which is exactly when a session asking a question
+// would otherwise go unnoticed. Claude Code writes such a title for itself;
+// hosting it takes that away, so the summary is written here instead.
+func (a *App) windowTitle() string {
+	if a.pool == nil {
+		return "ClaudeControl"
+	}
+	entries := a.pool.All()
+	states := make([]pool.State, 0, len(entries))
+	counts := map[pool.State]int{}
+	for _, e := range entries {
+		states = append(states, e.State)
+		counts[e.State]++
+	}
+	worst := indicator.Worst(states)
+	if worst == pool.StateIdle {
+		return "ClaudeControl"
+	}
+	return fmt.Sprintf("%s %d %s — ClaudeControl",
+		indicator.Glyph(worst, time.Now()), counts[worst], worst)
+}
+
+// setWindowTitle writes it, and only when it changed: a title rewritten every
+// frame is a title the terminal repaints every frame.
+func (a *App) setWindowTitle() {
+	title := a.windowTitle()
+	if a.scr.WindowTitle() == title {
+		return
+	}
+	a.scr.SetWindowTitle(title)
+}
+
+// anySessionWorking reports whether something is turning, which is what
+// decides whether the interface has to keep redrawing for the animation.
+func (a *App) anySessionWorking() bool {
+	if a.pool == nil {
+		return false
+	}
+	for _, e := range a.pool.All() {
+		if indicator.Animated(e.State) {
+			return true
+		}
+	}
+	return false
 }
 
 // closeModules releases every module. Panes are closed one at a time as they

@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"claudecontrol/internal/bus"
+	"claudecontrol/internal/indicator"
 	"claudecontrol/internal/module"
 	"claudecontrol/internal/pool"
 	"claudecontrol/internal/session"
@@ -181,14 +182,36 @@ func TestCyclingWrapsBothWays(t *testing.T) {
 	}
 }
 
-// A session asking for something from a tab you are not looking at has to be
-// able to say so: a hidden tab is otherwise a session you have forgotten.
-func TestAHiddenTabCanAskForAttention(t *testing.T) {
+// probe is a module that holds a session id, which is what a tab needs before
+// it can carry a mark. Only the Claude module does in the product; a stand-in
+// keeps this test off the real binary.
+type probe struct{ id string }
+
+func (p *probe) Init(module.Context) error    { return nil }
+func (p *probe) Resize(int, int) error        { return nil }
+func (p *probe) Draw(uv.Screen, uv.Rectangle) {}
+func (p *probe) Close() error                 { return nil }
+func (p *probe) SessionID() string            { return p.id }
+
+func init() {
+	module.Register("probe", func(cfg map[string]any) (module.Module, error) {
+		id, _ := cfg["id"].(string)
+		return &probe{id: id}, nil
+	})
+}
+
+// A session doing something from a tab you are not looking at has to be able
+// to say so: a hidden tab is otherwise a session you have forgotten. The mark
+// is the same one the pane titles and the terminal's own title use.
+func TestAHiddenTabCarriesItsSessionsMark(t *testing.T) {
 	b := bus.New()
 	defer b.Close()
 	p := pool.New(b)
 
-	m := build(t, two(), module.Context{Bus: b, Wake: func() {}})
+	m := build(t, map[string]any{"tabs": []any{
+		map[string]any{"title": "plain", "module": "term", "options": shell("cat")},
+		map[string]any{"title": "hidden", "module": "probe", "options": map[string]any{"id": "sess-hidden"}},
+	}}, module.Context{Bus: b, Wake: func() {}})
 
 	s, err := session.Start(session.Spec{
 		ID: "sess-hidden", Argv: []string{"sh", "-c", "sleep 30"}, Width: 20, Height: 4,
@@ -198,14 +221,20 @@ func TestAHiddenTabCanAskForAttention(t *testing.T) {
 	}
 	defer s.Close()
 	p.Add(s, "hidden", "")
-	p.SetState(s.ID, pool.StateWaiting)
 
-	// The term module does not carry a session id, so nothing should be
-	// marked: the mark has to follow the session, not merely the fact that
-	// something somewhere is waiting.
-	time.Sleep(200 * time.Millisecond)
-	if strings.Contains(paint(t, m, 50, 10).row(0), "•") {
-		t.Error("a tab was marked for a session it does not hold")
+	for _, state := range []pool.State{pool.StateWaiting, pool.StateExited} {
+		p.SetState(s.ID, state)
+		want := indicator.Glyph(state, time.Now())
+		waitFor(t, "the mark for "+state.String(), func() bool {
+			return strings.Contains(paint(t, m, 50, 10).row(0), want)
+		})
+	}
+
+	// The tab with no session gets no mark: a shape that means a state must
+	// never appear where there is no state. The mark is drawn before the
+	// title, so a bare label at the start of the strip is the whole proof.
+	if row := paint(t, m, 50, 10).row(0); !strings.HasPrefix(row, " plain ") {
+		t.Errorf("the session-less tab carries a mark: %q", row)
 	}
 }
 

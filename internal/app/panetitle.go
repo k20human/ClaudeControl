@@ -4,13 +4,17 @@ import (
 	"fmt"
 	"image/color"
 	"strings"
+	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 
+	"claudecontrol/internal/indicator"
 	"claudecontrol/internal/layout"
 	"claudecontrol/internal/module"
+	"claudecontrol/internal/pool"
 	"claudecontrol/internal/render"
+	"claudecontrol/internal/session"
 	"claudecontrol/internal/transcript"
 )
 
@@ -69,6 +73,19 @@ func (a *App) paneName(id layout.PaneID) string {
 	return a.moduleName(id)
 }
 
+// paneState is what the session behind a pane is doing, if it has one.
+func (a *App) paneState(id layout.PaneID) (pool.State, bool) {
+	sm, ok := a.modules[id].(interface{ SessionID() string })
+	if !ok || a.pool == nil {
+		return 0, false
+	}
+	e, ok := a.pool.Get(session.ID(sm.SessionID()))
+	if !ok {
+		return 0, false
+	}
+	return e.State, true
+}
+
 // sessionName is the name reported for a session, if one has been.
 func (a *App) sessionName(id string) string {
 	a.usageMu.RLock()
@@ -93,9 +110,24 @@ func (a *App) drawPaneTitles(scr uv.Screen) {
 		}
 		render.Fill(scr, uv.Rect(r.X, r.Y, r.W, titleH), bg)
 
+		x := r.X + 1
+		if st, ok := a.paneState(id); ok {
+			// The mark first, because it is what a glance is looking for.
+			mark := indicator.Glyph(st, time.Now())
+			markFg := color.Color(indicator.Colour(st))
+			if id == a.focus {
+				// On the filled title the state colours would fight the
+				// accent, so the mark takes the title's own foreground and
+				// says what it says by shape alone.
+				markFg = fg
+			}
+			render.Text(scr, x, r.Y, mark, markFg, bg)
+			x += ansi.StringWidth(mark) + 1
+		}
+
 		name := a.paneName(id)
-		render.Text(scr, r.X+1, r.Y, truncate(name, r.W-2), fg, bg)
-		used := ansi.StringWidth(name) + 2
+		render.Text(scr, x, r.Y, truncate(name, r.X+r.W-1-x), fg, bg)
+		used := x - r.X + ansi.StringWidth(name) + 1
 
 		if rest := a.paneDetail(id); rest != "" && r.W-used > 3 {
 			render.Text(scr, r.X+used, r.Y, truncate(" "+rest, r.W-used-1), detail, bg)

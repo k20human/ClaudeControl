@@ -352,6 +352,37 @@ pane that would rearrange the window every time.
 
 ---
 
+# Knowing what a session is doing
+
+Claude Code writes a mark into its terminal's title while it works — hosting it
+takes that away, since the title it writes reaches an emulator rather than your
+terminal. The mark is put back, in the same shape in all three places it can
+appear:
+
+| | |
+|---|---|
+| `✳ ✻ ✽` turning | working |
+| `◐` | waiting for you |
+| `✕` | the session has ended |
+| `·` | idle |
+
+- **Above a pane**, before its name.
+- **In a tab strip**, before each label, which is what makes a hidden tab
+  bearable: a session asking a question from a tab you are not looking at
+  colours its own label.
+- **In the title of the terminal running the application**, summarised by
+  whichever session most wants you — `◐ 1 waiting — ClaudeControl`. That title
+  is the one thing you can see when the window is behind something else, which
+  is exactly when a question would otherwise go unnoticed.
+
+The mark comes from the session state the hooks report, not from the title
+Claude Code writes for itself. That title says the same thing, but as a string
+this application would have to guess at; the state arrives typed. Only the
+working mark turns, and the interface redraws for it **only while something is
+actually working** — an idle window stays idle.
+
+---
+
 # Keys and mouse
 
 | | |

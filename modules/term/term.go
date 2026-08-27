@@ -107,6 +107,16 @@ func (m *Module) Resize(w, h int) error {
 	return m.sess.Resize(w, h)
 }
 
+// SessionID is the identity this pane's process was given, or empty before it
+// has started. It is what lets the pane title and a tab strip say what the
+// session is doing: the pool knows the state, and this is the key to it.
+func (m *Module) SessionID() string {
+	if m.sess == nil {
+		return ""
+	}
+	return string(m.sess.ID)
+}
+
 // title is what the sessions list shows. The pane number is part of it because
 // several panes commonly run the same command in the same directory, and rows
 // nobody can tell apart are rows nobody can act on.
