@@ -78,6 +78,16 @@ type service struct {
 	// picked is whether the buttons act on it. Everything is picked to begin
 	// with: a supervisor whose start button starts nothing would be a puzzle.
 	picked bool
+
+	// view is how the log is looked at: the wheel reaches the history, which
+	// matters most for the four hundred lines a restart brings back.
+	view session.View
+
+	// carry is what the previous run printed, put back on the screen when the
+	// next one starts. A restart usually happens because of something the
+	// service said, and losing that at the moment you act on it is the worst
+	// possible time to lose it.
+	carry string
 }
 
 // Module is the pane.
@@ -184,6 +194,9 @@ func expand(p string) string {
 // must never be is surprising about what is running.
 func (m *Module) Init(ctx module.Context) error {
 	m.ctx = ctx
+	// Before anything starts: what the last run of the application left is
+	// what a service that starts now should open with.
+	m.loadCarry()
 	m.mu.Lock()
 	for _, s := range m.svcs {
 		if s.spec.Autostart {
@@ -307,6 +320,9 @@ func logArea(w, h int) (int, int) {
 // running with nothing left to manage it.
 func (m *Module) Close() error {
 	m.scanOnce.Do(func() { close(m.scanning) })
+	// Written before the processes are stopped: what is on the screen now is
+	// the record, and terminating first would race the last lines away.
+	m.saveCarry()
 	m.mu.Lock()
 	svcs := append([]*service(nil), m.svcs...)
 	grace := m.grace
@@ -368,6 +384,7 @@ func (m *Module) startLocked(s *service) {
 	}
 	s.adopted = nil
 	if s.sess != nil {
+		m.captureLocked(s)
 		_ = s.sess.Close()
 		s.sess = nil
 	}
@@ -388,6 +405,10 @@ func (m *Module) startLocked(s *service) {
 		s.state, s.code, s.since = Exited, -1, time.Now()
 		return
 	}
+	replay(sess, s.carry, w)
+	// The offset belonged to a screen that no longer exists. Keeping it would
+	// open the new run somewhere in the middle of the old one.
+	s.view.Reset()
 	s.sess, s.state, s.code, s.since = sess, Running, 0, time.Now()
 }
 
@@ -408,6 +429,7 @@ func (m *Module) stopLocked(s *service) {
 		s.state = Stopped
 		return
 	}
+	m.captureLocked(s)
 	sess, grace := s.sess, m.grace
 	s.sess, s.state, s.since = nil, Stopped, time.Now()
 	// Off the draw path: a service that ignores SIGTERM would otherwise freeze
@@ -463,6 +485,9 @@ func (m *Module) RestartPicked() {
 	}
 	going := make([]pair, 0, len(picked))
 	for _, s := range picked {
+		// Before the session is let go: what it printed is the reason this
+		// button was pressed.
+		m.captureLocked(s)
 		going = append(going, pair{s, s.sess, s.adopted})
 		s.sess, s.adopted, s.state = nil, nil, Stopped
 	}

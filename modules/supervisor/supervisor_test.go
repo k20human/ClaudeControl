@@ -18,6 +18,25 @@ import (
 	"claudecontrol/modules/supervisor"
 )
 
+// TestMain moves the state directory somewhere disposable.
+//
+// The supervisor writes each service's last output there when it closes, and a
+// test run has no business leaving that in the state of the person running it.
+// In TestMain rather than in each test: a helper can be forgotten by the next
+// test somebody writes, and this cannot.
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "supervisor-state")
+	if err != nil {
+		panic(err)
+	}
+	if err := os.Setenv("XDG_STATE_HOME", dir); err != nil {
+		panic(err)
+	}
+	code := m.Run()
+	_ = os.RemoveAll(dir)
+	os.Exit(code)
+}
+
 // grid is a screen that remembers what was painted.
 type grid struct {
 	w, h  int

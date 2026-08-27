@@ -248,6 +248,14 @@ func (s *Session) History() int {
 	return s.Term.ScrollbackLen()
 }
 
+// Rows is how many lines the screen itself holds, history excluded. With
+// History it gives the range LineText accepts.
+func (s *Session) Rows() int {
+	s.termMu.Lock()
+	defer s.termMu.Unlock()
+	return s.Term.Bounds().Dy()
+}
+
 // AltScreen reports whether the guest has taken the whole screen for itself.
 //
 // It decides who the wheel belongs to. A guest on the alternate screen is
@@ -417,6 +425,24 @@ func (s *Session) LineText(line, from, to int) string {
 		b.WriteString(cell.Content)
 	}
 	return b.String()
+}
+
+// Feed writes bytes into the emulator without sending them to the guest.
+//
+// It is how something already printed is put back on a screen: the text goes
+// where the process's own output would have gone, and the process never sees
+// it. Everything else that reaches the emulator arrives from the pump under
+// the same lock, so a feed cannot land in the middle of a sequence.
+func (s *Session) Feed(b []byte) {
+	if len(b) == 0 {
+		return
+	}
+	s.termMu.Lock()
+	_, _ = s.Term.Write(b)
+	s.termMu.Unlock()
+	if s.onUpdate != nil {
+		s.onUpdate()
+	}
 }
 
 // SendKey encodes a key the way this guest asked for it.

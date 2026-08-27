@@ -3,12 +3,14 @@ package supervisor
 import (
 	"fmt"
 	"image/color"
+	"strings"
 	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 
 	"claudecontrol/internal/render"
+	"claudecontrol/internal/session"
 )
 
 // headerRows is the button row and the rule under it. The hosted processes are
@@ -179,6 +181,8 @@ func (m *Module) drawLogs(scr uv.Screen, area uv.Rectangle, i int) {
 	}
 	s := m.svcs[i]
 	sess := s.sess
+	view := &s.view
+	carry := s.carry
 	adopted := s.adopted
 	title := fmt.Sprintf("logs · %s", s.spec.Name)
 	state := s.state
@@ -200,6 +204,26 @@ func (m *Module) drawLogs(scr uv.Screen, area uv.Rectangle, i int) {
 		return
 	}
 	if sess == nil {
+		// A stopped service still has a last run, and that is usually what you
+		// opened this view to read. It is shown as the plain text it was kept
+		// as, under a line saying so — nothing here is live.
+		if carry != "" {
+			render.Text(scr, body.Min.X+1, body.Min.Y,
+				clip("not running · last run below", body.Dx()-2), fgMuted, bgPanel)
+			kept := strings.Split(strings.TrimRight(carry, "\n"), "\n")
+			room := body.Dy() - 1
+			if room < 1 {
+				return
+			}
+			if len(kept) > room {
+				kept = kept[len(kept)-room:]
+			}
+			for i, line := range kept {
+				render.Text(scr, body.Min.X+1, body.Min.Y+1+i,
+					clip(line, body.Dx()-2), fgMuted, bgPanel)
+			}
+			return
+		}
 		lines := []string{"not running — press s, or the start button, to see its output"}
 		if state == Exited {
 			lines = append(lines, "the output of the run that ended is gone with its process")
@@ -223,7 +247,7 @@ func (m *Module) drawLogs(scr uv.Screen, area uv.Rectangle, i int) {
 		}
 		return
 	}
-	sess.Term.Draw(scr, body)
+	view.Draw(sess, scr, body)
 }
 
 // Cursor puts the cursor where the hosted process put it, so a server that
@@ -296,6 +320,34 @@ func (m *Module) Key(k uv.KeyEvent) {
 // Mouse acts on whatever region was clicked. The regions are the ones drawn
 // last frame, so what you click is what you saw.
 func (m *Module) Mouse(ev uv.MouseEvent) {
+	// The wheel belongs to the log while one is open. It is the only way to
+	// reach what a restart brought back, which is most of the point of
+	// bringing it back.
+	if wheel, ok := ev.(uv.MouseWheelEvent); ok {
+		m.mu.Lock()
+		var sess *session.Session
+		var view *session.View
+		if m.showing >= 0 && m.showing < len(m.svcs) {
+			s := m.svcs[m.showing]
+			sess, view = s.sess, &s.view
+		}
+		m.mu.Unlock()
+		if sess == nil || view == nil {
+			return
+		}
+		switch wheel.Button {
+		case uv.MouseWheelUp:
+			view.Wheel(sess, true)
+		case uv.MouseWheelDown:
+			view.Wheel(sess, false)
+		default:
+			return
+		}
+		if m.ctx.Wake != nil {
+			m.ctx.Wake()
+		}
+		return
+	}
 	click, ok := ev.(uv.MouseClickEvent)
 	if !ok {
 		return

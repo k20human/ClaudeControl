@@ -221,15 +221,27 @@ here. Its **output cannot be read**: that output went wherever it was going
 before the module found it. Restarting brings the service under supervision,
 and its output with it.
 
+**What a run printed survives the next one.** You restart a service because of
+something it said, and losing that at the moment you act on it is the worst
+possible time to lose it — so the last four hundred lines come back on the new
+run's screen, dimmed, under a rule reading `previous run`. The same record is
+written to `~/.local/state/claudecontrol/services/` when the application
+closes, so it is there tomorrow as well. A **stopped** service shows that text
+in its place, under a line saying it is not live. It is kept as plain text: the
+colours and the cursor moves are dropped, because a record that could still
+move the cursor is not a record.
+
 **Stopping signals the whole process tree, never the process group.**
 `npm run dev` is a launcher whose real server is one of its children, and
 signalling only the child leaves that server holding its port. A service
 adopted from a shell also shares that shell's process group, so signalling the
 group would kill the terminal you are sitting in.
 
-In the pane: click a name for its output, or a checkbox to tick it. From the
-keyboard, `↑ ↓` moves, `space` ticks, `a` ticks everything or nothing, `enter`
-opens the output, and `s` `r` `x` start, restart and stop the ticked ones.
+In the pane: click a name for its output, or a checkbox to tick it. **The wheel
+reaches the log's history**, which is how you get to the lines a restart
+brought back. From the keyboard, `↑ ↓` moves, `space` ticks, `a` ticks
+everything or nothing, `enter` opens the output, and `s` `r` `x` start, restart
+and stop the ticked ones.
 
 ## `services` — is it up?
 
