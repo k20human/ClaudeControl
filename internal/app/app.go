@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
 
+	"claudecontrol/internal/alert"
 	"claudecontrol/internal/bus"
 	"claudecontrol/internal/config"
 	"claudecontrol/internal/hooks"
@@ -101,6 +103,13 @@ type App struct {
 	// menu the terminal would otherwise have shown.
 	menu *menuState
 
+	// alerts tells you that a conversation is waiting when you are not
+	// looking at the screen. waitingMark is what it has already said, so that
+	// a session announces itself once rather than on every hook.
+	alerts      *alert.Notifier
+	waitingMark map[string]bool
+	bellPending atomic.Bool
+
 	// conv is the open search across the conversations on disk.
 	conv *convSearch
 
@@ -167,7 +176,13 @@ func New(cfgPath string) (*App, error) {
 		pointerX:    -1,
 		pointerY:    -1,
 		wake:        make(chan struct{}, 1),
+		waitingMark: make(map[string]bool),
 	}
+
+	// Built before the hook pump starts, because a hook can arrive before the
+	// terminal is open — the notifier is given somewhere to ring later.
+	bell, desktop := cfg.AlertsOrDefault()
+	a.alerts = alert.New(alert.Options{Bell: bell, Desktop: desktop}, nil)
 
 	// The socket has to exist before any session starts, since a session is
 	// told where to send its hooks at launch. A failure here is not fatal: the
@@ -331,6 +346,7 @@ func (a *App) pumpHooks() {
 			continue
 		}
 		a.pool.SetState(session.ID(key), st)
+		a.noteAlert(key, st)
 		a.Wake()
 	}
 }
@@ -373,6 +389,7 @@ func (a *App) Wake() {
 // Run takes over the terminal and loops until the user quits.
 func (a *App) Run() error {
 	a.term = uv.DefaultTerminal()
+	a.alerts.SetTerm(bellSink{a})
 	a.scr = a.term.Screen()
 
 	a.scr.EnterAltScreen()
@@ -392,6 +409,14 @@ func (a *App) Run() error {
 
 	if err := a.term.Start(); err != nil {
 		return fmt.Errorf("app: start terminal: %w", err)
+	}
+
+	// Said now rather than at the moment a notification is missed: a
+	// configuration asking for something this machine cannot do should hear
+	// about it while there is still time to install the program or turn the
+	// setting off.
+	if _, ok := a.alerts.Helper(); a.alerts.WantsDesktop() && !ok {
+		a.setStatus("install libnotify-bin for desktop alerts, or set alerts.desktop: false")
 	}
 	defer func() {
 		if a.hooks != nil {
@@ -562,6 +587,7 @@ func (a *App) draw() {
 	a.drawOverlay(a.scr)
 	a.drawCursor(a.scr)
 	a.setWindowTitle()
+	a.ringPendingBell()
 	a.saveSnapshot()
 }
 

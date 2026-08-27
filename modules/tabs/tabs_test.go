@@ -457,6 +457,8 @@ func TestEveryInterfaceTheApplicationLooksForIsPassedThrough(t *testing.T) {
 			FindClear()
 			FindStatus() (string, int, int)
 		}](m)},
+		{"CanFind", implements[interface{ CanFind() bool }](m)},
+		{"SelectSession", implements[interface{ SelectSession(string) bool }](m)},
 		{"Values", implements[interface{ Values() map[string]any }](m)},
 		{"Title", implements[interface{ Title() (string, bool) }](m)},
 		{"Cursor", implements[module.Cursorer](m)},

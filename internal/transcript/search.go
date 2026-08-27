@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 // Hit is one conversation that contains what was asked for.
@@ -35,9 +37,8 @@ const maxLine = 1 << 20
 // conversation that ever opened a source file, which is the opposite of
 // finding something.
 //
-// Case is ignored for ASCII. A query in one case will not find an accented
-// letter written in the other, which is a limit worth stating rather than a
-// correctness anybody will notice.
+// Case is ignored, accents included: "ÉLÉPHANT" is found by "éléphant" and
+// the other way round. It is not accent-blind — "elephant" finds neither.
 func Search(query string, limit int) []Hit {
 	query = strings.TrimSpace(query)
 	if query == "" {
@@ -223,9 +224,70 @@ func spokenText(line []byte) string {
 }
 
 // containsFold is a case-insensitive search that allocates nothing, needle
-// already lowered. Only ASCII letters are folded, which is what keeps it from
-// copying every line it looks at.
+// already lowered.
+//
+// Two paths, because they are correct under different conditions. An ASCII
+// needle can be folded byte by byte: an ASCII letter never appears inside a
+// multi-byte sequence, whose bytes are all above 0x7F. A needle with an
+// accent in it cannot — É and é differ in the second byte of the pair, and a
+// byte fold would miss "ÉLÉPHANT" for "éléphant", which is most of what a
+// search in French is for. That one decodes runes instead, and pays for it
+// only when the query asks.
 func containsFold(haystack, needle []byte) bool {
+	if !asciiOnly(needle) {
+		return containsFoldRunes(haystack, needle)
+	}
+	return containsFoldASCII(haystack, needle)
+}
+
+// asciiOnly reports whether every byte is a plain ASCII one.
+func asciiOnly(b []byte) bool {
+	for _, c := range b {
+		if c >= utf8.RuneSelf {
+			return false
+		}
+	}
+	return true
+}
+
+// containsFoldRunes is the same search a rune at a time, folding through
+// unicode.ToLower so that every alphabet is folded the way its own case rules
+// say, not the way ASCII's do.
+func containsFoldRunes(haystack, needle []byte) bool {
+	if len(needle) == 0 || len(haystack) < len(needle) {
+		return false
+	}
+	// Decoded once, not once per position: this runs over every line of every
+	// transcript, and the first rune is the whole of the cheap rejection.
+	first, _ := utf8.DecodeRune(needle)
+	for i := 0; i < len(haystack); {
+		r, size := utf8.DecodeRune(haystack[i:])
+		if unicode.ToLower(r) == first && matchesFrom(haystack[i:], needle) {
+			return true
+		}
+		i += size
+	}
+	return false
+}
+
+// matchesFrom reports whether the needle runs from the start of haystack,
+// folding each rune of the haystack as it goes.
+func matchesFrom(haystack, needle []byte) bool {
+	for n := 0; n < len(needle); {
+		want, nsize := utf8.DecodeRune(needle[n:])
+		if len(haystack) == 0 {
+			return false
+		}
+		got, hsize := utf8.DecodeRune(haystack)
+		if unicode.ToLower(got) != want {
+			return false
+		}
+		haystack, n = haystack[hsize:], n+nsize
+	}
+	return true
+}
+
+func containsFoldASCII(haystack, needle []byte) bool {
 	if len(needle) == 0 || len(haystack) < len(needle) {
 		return false
 	}

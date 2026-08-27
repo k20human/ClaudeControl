@@ -93,7 +93,9 @@ func TestTheOutputSurvivesTheApplicationClosing(t *testing.T) {
 		t.Errorf("the file is called %q; the service's name should still be in it", kept[0].Name())
 	}
 
-	m := build(t, oneNoisy("SECOND-RUN"))
+	// buildIn, not build: the point of this test is the directory the first
+	// module wrote to, and build would hand the second one a fresh directory.
+	m := buildIn(t, oneNoisy("SECOND-RUN"))
 	m.StartPicked()
 	waitFor(t, "the service", func() bool { return stateOf(m, "noisy").State == supervisor.Running })
 	showLog(t, m)

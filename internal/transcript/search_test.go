@@ -138,3 +138,49 @@ func mustTime(t *testing.T, s string) time.Time {
 	}
 	return v
 }
+
+// A search in French is mostly a search for accented words, and the case of an
+// accented letter is not the case of an ASCII one: É and é differ in the
+// second byte of the pair, where A and a differ in the only byte there is.
+func TestAccentsAreFoldedBothWays(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", root)
+
+	writeTranscript(t, root, "-home-k-zoo", "shouted",
+		`{"type":"user","aiTitle":"Le zoo","cwd":"/home/k/zoo","message":{"content":"L'ÉLÉPHANT est arrivé"}}`,
+	)
+	writeTranscript(t, root, "-home-k-cafe", "quiet",
+		`{"type":"user","aiTitle":"Le café","cwd":"/home/k/cafe","message":{"content":"on prend un café ?"}}`,
+	)
+
+	for _, c := range []struct{ query, want string }{
+		{"éléphant", "Le zoo"},
+		{"ÉLÉPHANT", "Le zoo"},
+		{"Éléphant", "Le zoo"},
+		{"CAFÉ", "Le café"},
+		{"café", "Le café"},
+	} {
+		hits := transcript.Search(c.query, 10)
+		if len(hits) != 1 {
+			t.Errorf("%q found %d conversations, want 1", c.query, len(hits))
+			continue
+		}
+		if hits[0].Title != c.want {
+			t.Errorf("%q found %q, want %q", c.query, hits[0].Title, c.want)
+		}
+	}
+}
+
+// The plain path must not have been broken on the way.
+func TestAnAsciiQueryStillFolds(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", root)
+	writeTranscript(t, root, "-home-k-api", "shouty",
+		`{"type":"user","aiTitle":"Ports","cwd":"/home/k/api","message":{"content":"the SERVER is on 8080"}}`,
+	)
+	for _, q := range []string{"server", "SERVER", "Server"} {
+		if n := len(transcript.Search(q, 10)); n != 1 {
+			t.Errorf("%q found %d conversations, want 1", q, n)
+		}
+	}
+}

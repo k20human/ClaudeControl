@@ -64,6 +64,10 @@ var bindings = []binding{
 	// readline's capitalize-word in a shell, which is the price of the one
 	// letter everybody already associates with copying.
 	{[]string{"alt+c"}, "alt+c", "copy the selection", func(a *App) { a.copySelection() }},
+	// Free in the Claude Code binary, unbound in readline, and it arrives
+	// intact through a hosting emulator — the three tests every key here has
+	// to pass. i for the input a session is waiting for.
+	{[]string{"alt+i"}, "alt+i", "go to what is waiting on you", func(a *App) { a.focusWaiting() }},
 	{[]string{"alt+g"}, "alt+g", "this panel", func(a *App) { a.overlay = overlayHelp }},
 	{[]string{"alt+q"}, "alt+q", "quit", func(a *App) { a.overlay = overlayQuit }},
 }

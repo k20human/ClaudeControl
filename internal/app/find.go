@@ -70,7 +70,16 @@ func (a *App) paneFinder(id layout.PaneID) (finder, bool) {
 		return nil, false
 	}
 	f, ok := m.(finder)
-	return f, ok
+	if !ok {
+		return nil, false
+	}
+	// A pane that can search in principle may have nothing to search now — a
+	// task that has not been run, a service that is down. Opening a bar over
+	// one of those would offer a search that can only ever answer "none".
+	if c, asked := f.(interface{ CanFind() bool }); asked && !c.CanFind() {
+		return nil, false
+	}
+	return f, true
 }
 
 // findKey drives the search bar and reports whether it took the key.

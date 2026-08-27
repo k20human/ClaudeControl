@@ -42,9 +42,13 @@ type menuState struct {
 // reporting takes the right button away from the terminal, and with it the
 // menu the terminal would have shown. Having taken it, we owe one back.
 func (a *App) menuItems() []menuItem {
-	// The clipboard entries say what they will need before you press them.
-	// Finding out afterwards, from a message about a copy that did not
-	// happen, is finding out too late.
+	// The note on an entry says what it will need, or why it will do nothing,
+	// before you press it. Finding out afterwards — from a message about a
+	// copy that did not happen — is finding out too late.
+	findNote := ""
+	if _, ok := a.paneFinder(a.focus); !ok {
+		findNote = "nothing to search"
+	}
 	clip := ""
 	copyNote := "alt+c"
 	if _, ok := clipboard.Helper(); !ok {
@@ -57,8 +61,10 @@ func (a *App) menuItems() []menuItem {
 		{"copy", copyNote, (*App).copySelection},
 		{"paste", clip, (*App).pasteFromClipboard},
 		// The pane you clicked is the pane this searches, which is what a
-		// right-click means: the conversation-wide search is the bar's.
-		{"find here", "", (*App).toggleFind},
+		// right-click means: the conversation-wide search is the bar's. The
+		// note says when there is nothing to search — a service that is down,
+		// a task never run — for the same reason the clipboard entries do.
+		{"find here", findNote, (*App).toggleFind},
 		{"new session", "alt+n", func(a *App) { _ = a.newPane(layout.Horizontal) }},
 		{"close pane", "alt+x", func(a *App) { _ = a.closePane(a.focus) }},
 		{"zoom", "alt+z", (*App).toggleZoom},

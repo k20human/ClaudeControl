@@ -121,3 +121,41 @@ func TestLoadMalformedFileIsAnError(t *testing.T) {
 		t.Fatal("Load = nil error, want a parse error")
 	}
 }
+
+// The difference between "not written" and "written false" is the difference
+// between a default and a decision.
+func TestAlertsDefaultOnAndCanBeTurnedOff(t *testing.T) {
+	load := func(t *testing.T, body string) *config.Config {
+		t.Helper()
+		path := filepath.Join(t.TempDir(), "c.yaml")
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		c, err := config.Load(path)
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		return c
+	}
+
+	base := "layout:\n  module: term\n  options: { cmd: [sh] }\n"
+
+	c := load(t, base)
+	if bell, desktop := c.AlertsOrDefault(); !bell || !desktop {
+		t.Errorf("a document with no alerts section gave bell=%v desktop=%v, want both on", bell, desktop)
+	}
+
+	c = load(t, base+"alerts:\n  desktop: false\n")
+	bell, desktop := c.AlertsOrDefault()
+	if !bell {
+		t.Error("turning the desktop notification off also turned the bell off")
+	}
+	if desktop {
+		t.Error("desktop: false was not obeyed")
+	}
+
+	c = load(t, base+"alerts:\n  bell: false\n  desktop: false\n")
+	if bell, desktop := c.AlertsOrDefault(); bell || desktop {
+		t.Errorf("both off gave bell=%v desktop=%v", bell, desktop)
+	}
+}

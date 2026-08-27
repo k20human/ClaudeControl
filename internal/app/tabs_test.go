@@ -133,6 +133,7 @@ func TestTheHostTerminalTitleFollowsTheSessions(t *testing.T) {
 	const W, H = 90, 14
 	runtimeDir := t.TempDir()
 	bin := build(t)
+	standIn, _ := notifyStandIn(t)
 
 	var mu sync.Mutex
 	var titles []string
@@ -150,6 +151,8 @@ func TestTheHostTerminalTitleFollowsTheSessions(t *testing.T) {
 		Env: []string{
 			"XDG_STATE_HOME=" + t.TempDir(),
 			"XDG_RUNTIME_DIR=" + runtimeDir,
+			// Nothing a test starts may reach the real desktop.
+			"PATH=" + standIn + string(os.PathListSeparator) + os.Getenv("PATH"),
 		},
 		Width:  W,
 		Height: H,
@@ -217,6 +220,7 @@ func TestThePaneTitleCarriesTheSessionsMark(t *testing.T) {
 	const W, H = 90, 14
 	runtimeDir := t.TempDir()
 	bin := build(t)
+	standIn, _ := notifyStandIn(t)
 
 	s, err := session.Start(session.Spec{
 		ID:   "claudecontrol",
@@ -225,6 +229,8 @@ func TestThePaneTitleCarriesTheSessionsMark(t *testing.T) {
 		Env: []string{
 			"XDG_STATE_HOME=" + t.TempDir(),
 			"XDG_RUNTIME_DIR=" + runtimeDir,
+			// Nothing a test starts may reach the real desktop.
+			"PATH=" + standIn + string(os.PathListSeparator) + os.Getenv("PATH"),
 		},
 		Width:  W,
 		Height: H,

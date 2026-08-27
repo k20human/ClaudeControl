@@ -437,6 +437,36 @@ appear:
   is the one thing you can see when the window is behind something else, which
   is exactly when a question would otherwise go unnoticed.
 
+## Being told, and going there
+
+Three marks and a title only help while you are looking at the screen, and the
+reason to run several conversations is that you are not.
+
+**When a conversation starts waiting on you**, the terminal bell rings — most
+terminals turn that into an urgent mark on their tab — and a desktop
+notification is posted naming the conversation. Once each, on the way in: hooks
+arrive whenever Claude Code has something to report, and a bell on every one of
+them would be an alarm rather than a notice. A conversation that goes back to
+work and stops again announces itself again, because the second wait is as much
+news as the first.
+
+```yaml
+alerts:
+  bell: true               # BEL to your terminal, default true
+  desktop: true            # notify-send or kdialog, default true
+```
+
+Both default to on. If nothing on the machine can post a notification the bar
+says so at startup, rather than at the moment one is missed — on Debian and
+Ubuntu the program is in `libnotify-bin`.
+
+**`alt+i` goes to whatever is waiting**, and so does clicking the `N waiting`
+count in the bar. The count already said that something needs you; the only
+question it left was where. The pane is focused and, if it is a pane of tabs,
+the tab holding that conversation is brought to the front. Pressed again it
+moves to the next one, so several are visited in turn rather than the same one
+twice.
+
 The mark comes from the session state the hooks report, not from the title
 Claude Code writes for itself. That title says the same thing, but as a string
 this application would have to guess at; the state arrives typed. Only the
@@ -459,6 +489,7 @@ actually working** — an idle window stays idle.
 | `alt+;` / `alt+'` | previous tab, next tab, in a pane of tabs |
 | `alt+:` | search your Claude conversations |
 | `alt+c` | copy the selection |
+| `alt+i` | go to what is waiting on you |
 | `alt+space` / `alt+,` / `alt+/` | sessions, settings, command palette |
 | `alt+g` / `alt+q` | help, quit |
 
@@ -503,6 +534,10 @@ a normal machine, so the search runs off the drawing loop, one at a time, with
 the newest query winning: type quickly and you pay for one search, not one per
 letter.
 
+Case is ignored, **accents included**: `ÉLÉPHANT` is found by `éléphant` and
+the other way round. It is not accent-*blind* — `elephant` finds neither, which
+would be a different feature and a slower one.
+
 Only **what was said** is searched — your prompts and Claude's replies. Tool
 results, the contents of files that were read, and thinking are skipped. A word
 that is common in code would otherwise match every conversation that ever
@@ -523,7 +558,10 @@ that repeated a word forty times is not more relevant for having done so.
 
 **Right-click → find here**. The click already says which pane you mean, which
 is why this one has no shortcut and the bar's button goes to the conversations
-instead. It is the search for a service's log or a long build.
+instead. It works on a Claude session, a terminal, a **service's log** and a
+**task's output** — the last two being where a search is wanted most, and where
+it used to refuse to open. The menu entry says `nothing to search` when there
+is nothing: a service that is down, a task never run.
 
 Type and the matches appear as you go, counted on the right (`3/17`) or told
 plainly that there are `none` — a search that looked and found nothing must

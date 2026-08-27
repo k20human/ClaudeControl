@@ -32,6 +32,11 @@ type button struct {
 	rect  layout.Rect
 	run   func(a *App)
 	warn  bool // drawn in the warning colour
+	// silent means the region is clickable but paints nothing of its own:
+	// something else is already drawn there. The count of waiting sessions is
+	// the only one — it changes without the layout changing, so it draws
+	// itself and only borrows the region.
+	silent bool
 }
 
 // buildStatusBar lays the buttons out from the left, and returns them with the
@@ -129,6 +134,17 @@ func (a *App) buildStatusBar() []button {
 		x += w + 1
 	}
 
+	// The count of waiting sessions is a button: it already says that
+	// something needs you, and the only question it leaves is where.
+	if a.barCountX > 0 {
+		out = append(out, button{
+			hint:   "go to what is waiting on you  ·  alt+i",
+			rect:   layout.Rect{X: a.barCountX, Y: y, W: a.barCountW, H: 1},
+			run:    func(a *App) { a.focusWaiting() },
+			silent: true,
+		})
+	}
+
 	if quitX > x {
 		out = append(out, button{
 			label: quit,
@@ -187,6 +203,9 @@ func (a *App) drawStatusBar(scr uv.Screen) {
 	}
 
 	for i, b := range a.buttons {
+		if b.silent {
+			continue
+		}
 		if a.showingStatus() && !b.warn {
 			// Quit stays: it is the way out, and the way out is never hidden
 			// behind a message.
@@ -208,7 +227,13 @@ func (a *App) drawStatusBar(scr uv.Screen) {
 	// layout would never notice.
 	if label := a.countLabel(); a.barCountX > 0 {
 		x := a.barCountX + a.barCountW - ansi.StringWidth(label)
-		render.Text(scr, x, y, label, barCountFg, barBg)
+		fg := color.Color(barCountFg)
+		if i := a.hoverBtn; i >= 0 && i < len(a.buttons) && a.buttons[i].silent {
+			// Lit under the pointer like any other button, in the foreground
+			// rather than the background: it is a label first.
+			fg = barHotBg
+		}
+		render.Text(scr, x, y, label, fg, barBg)
 	}
 
 	a.drawBarUsage(scr, y)

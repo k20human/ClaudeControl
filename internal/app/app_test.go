@@ -98,10 +98,37 @@ func runWith(t *testing.T, cfg string, w, h int, cb vt.Callbacks) (*session.Sess
 	return runWithEnv(t, cfg, w, h, cb, nil)
 }
 
+// notifyStandIn puts a fake notify-send first on PATH and returns the file it
+// appends its arguments to.
+//
+// Every hosted application gets one, whether the test asks or not: alerts are
+// on by default, so without it a test run would post real notifications to the
+// desktop of whoever is running it.
+func notifyStandIn(t *testing.T) (pathEntry, posted string) {
+	t.Helper()
+	dir := t.TempDir()
+	posted = filepath.Join(dir, "posted")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" >> " + posted + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "notify-send"), []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return dir, posted
+}
+
 // runWithEnv adds to the hosted application's environment, which is how a test
 // puts a stand-in on its PATH.
 func runWithEnv(t *testing.T, cfg string, w, h int, cb vt.Callbacks, env []string) (*session.Session, func() *screen) {
 	t.Helper()
+	s, snap, _ := runNotified(t, cfg, w, h, cb, env)
+	return s, snap
+}
+
+// runNotified is runWithEnv, also handing back the file the notification
+// stand-in appends to. Every hosted application gets the stand-in; only a test
+// about alerts needs to read it.
+func runNotified(t *testing.T, cfg string, w, h int, cb vt.Callbacks, env []string) (*session.Session, func() *screen, string) {
+	t.Helper()
+	standIn, posted := notifyStandIn(t)
 	s, err := session.Start(session.Spec{
 		Callbacks: cb,
 		ID:        "claudecontrol",
@@ -110,7 +137,13 @@ func runWithEnv(t *testing.T, cfg string, w, h int, cb vt.Callbacks, env []strin
 		// The application records its panes on every layout change. Pointed at
 		// a temporary directory so a test run never touches the state of the
 		// person running it.
-		Env:    append([]string{"XDG_STATE_HOME=" + t.TempDir()}, env...),
+		// The stand-in goes first so nothing reaches the real desktop, and
+		// before the caller's own entries so a test that sets its own PATH
+		// still wins.
+		Env: append([]string{
+			"XDG_STATE_HOME=" + t.TempDir(),
+			"PATH=" + standIn + string(os.PathListSeparator) + os.Getenv("PATH"),
+		}, env...),
 		Width:  w,
 		Height: h,
 	})
@@ -122,7 +155,7 @@ func runWithEnv(t *testing.T, cfg string, w, h int, cb vt.Callbacks, env []strin
 		g := newScreen(w, h)
 		s.Term.Draw(g, uv.Rect(0, 0, w, h))
 		return g
-	}
+	}, posted
 }
 
 // waitForAnywhere polls until the text appears on any row. Panels are centred,
@@ -537,6 +570,7 @@ func TestAHookMarksASessionAsWaiting(t *testing.T) {
 	const W, H = 90, 14
 	runtimeDir := t.TempDir()
 	bin := build(t)
+	standIn, posted := notifyStandIn(t)
 
 	s, err := session.Start(session.Spec{
 		ID:   "claudecontrol",
@@ -545,6 +579,8 @@ func TestAHookMarksASessionAsWaiting(t *testing.T) {
 		Env: []string{
 			"XDG_STATE_HOME=" + t.TempDir(),
 			"XDG_RUNTIME_DIR=" + runtimeDir,
+			// Nothing a test starts may reach the real desktop.
+			"PATH=" + standIn + string(os.PathListSeparator) + os.Getenv("PATH"),
 		},
 		Width:  W,
 		Height: H,
@@ -573,6 +609,21 @@ func TestAHookMarksASessionAsWaiting(t *testing.T) {
 	}
 
 	waitForRow(t, snap, H-1, "1 waiting")
+
+	// The mark on the screen only helps while you are looking at it, which is
+	// the one thing you are not doing when a question goes unnoticed.
+	deadline := time.Now().Add(5 * time.Second)
+	var raw []byte
+	for time.Now().Before(deadline) {
+		raw, _ = os.ReadFile(posted)
+		if strings.Contains(string(raw), "waiting on you") {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !strings.Contains(string(raw), "waiting on you") {
+		t.Errorf("no desktop notification was posted; the file holds %q", raw)
+	}
 
 	// And a Stop takes it back to quiet.
 	cmd = exec.Command(bin, "--hook", "Stop")

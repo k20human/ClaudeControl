@@ -26,7 +26,39 @@ type NodeSpec struct {
 
 // Config is the whole document.
 type Config struct {
-	Layout *NodeSpec `yaml:"layout"`
+	Layout *NodeSpec  `yaml:"layout"`
+	Alerts *AlertSpec `yaml:"alerts,omitempty"`
+}
+
+// AlertSpec says how you are told that a conversation is waiting on you when
+// you are not looking at the screen.
+//
+// Pointers rather than plain bools: the difference between "not written" and
+// "written false" is the difference between a default and a decision, and a
+// default that could not be overridden to off would be a bug.
+type AlertSpec struct {
+	Bell    *bool `yaml:"bell,omitempty"`
+	Desktop *bool `yaml:"desktop,omitempty"`
+}
+
+// AlertsOrDefault is what the document asked for, with the defaults filled in.
+//
+// The bell is on: it is one byte, it is exactly what BEL is for, and a
+// terminal that does not want it ignores it. The desktop notification is on
+// too — being told when you are looking elsewhere is the whole point, and a
+// machine with no notification program says so once rather than staying quiet.
+func (c *Config) AlertsOrDefault() (bell, desktop bool) {
+	bell, desktop = true, true
+	if c == nil || c.Alerts == nil {
+		return
+	}
+	if c.Alerts.Bell != nil {
+		bell = *c.Alerts.Bell
+	}
+	if c.Alerts.Desktop != nil {
+		desktop = *c.Alerts.Desktop
+	}
+	return
 }
 
 // PaneSpec is what a leaf needs in order to build its module.

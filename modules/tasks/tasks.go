@@ -47,6 +47,11 @@ type Module struct {
 	// other command, which is what puts its output on screen and its entry in
 	// the sessions list.
 	running *session.Session
+
+	// view is how that output is looked at: the wheel reaches its history and
+	// the pane search runs over it. A task prints a great deal, and the line
+	// that matters is rarely the last one.
+	view session.View
 }
 
 // New builds the module from its configuration.
@@ -143,6 +148,9 @@ func (m *Module) Run() error {
 		return err
 	}
 	m.running = s
+	// The offset and the search belonged to output that no longer exists.
+	m.view.Reset()
+	m.view.FindClear()
 	if m.ctx.Pool != nil {
 		m.ctx.Pool.Add(s, task.Name, dir)
 		m.ctx.Pool.SetAttached(s.ID, true)
@@ -179,7 +187,7 @@ func (m *Module) Resize(w, h int) error {
 // panes would leave one of them empty most of the time.
 func (m *Module) Draw(scr uv.Screen, area uv.Rectangle) {
 	if m.running != nil {
-		m.running.Term.Draw(scr, area)
+		m.view.Draw(m.running, scr, area)
 		return
 	}
 	render.Fill(scr, area, bgPanel)
@@ -240,10 +248,28 @@ func (m *Module) Key(k uv.KeyEvent) {
 }
 
 // Mouse forwards to a running task; the list is driven from the keyboard.
+//
+// The wheel is the exception: a task's output is a thing you read back, and
+// hosting it took the terminal's own scrollbar away.
 func (m *Module) Mouse(e uv.MouseEvent) {
-	if m.running != nil {
-		m.running.SendMouse(e)
+	if m.running == nil {
+		return
 	}
+	if wheel, ok := e.(uv.MouseWheelEvent); ok {
+		switch wheel.Button {
+		case uv.MouseWheelUp:
+			m.view.Wheel(m.running, true)
+		case uv.MouseWheelDown:
+			m.view.Wheel(m.running, false)
+		default:
+			return
+		}
+		if m.ctx.Wake != nil {
+			m.ctx.Wake()
+		}
+		return
+	}
+	m.running.SendMouse(e)
 }
 
 // Paste forwards to a running task.

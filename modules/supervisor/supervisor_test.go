@@ -83,7 +83,20 @@ func (g *grid) text() string {
 	return b.String()
 }
 
+// build makes a supervisor with its own state directory.
+//
+// Its own, not the package's: a service's last output is kept between runs, so
+// two tests using the same service name would find each other's output
+// replayed into their pane. A test about that keeping uses buildIn instead,
+// which leaves the directory where the test put it.
 func build(t *testing.T, cfg map[string]any) *supervisor.Module {
+	t.Helper()
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	return buildIn(t, cfg)
+}
+
+// buildIn makes one in whatever state directory is already set.
+func buildIn(t *testing.T, cfg map[string]any) *supervisor.Module {
 	t.Helper()
 	built, err := module.New("supervisor", cfg)
 	if err != nil {

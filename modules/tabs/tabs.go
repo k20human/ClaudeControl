@@ -409,6 +409,36 @@ func (m *Module) SessionID() string {
 
 // Sessions are the conversations in every tab, in order — not only the one on
 // screen. A tab you were not looking at is still one you want back.
+// SelectSession brings the tab holding a conversation to the front, and
+// reports whether it found one. It is how the application acts on a session
+// rather than on a pane: what is waiting on you is a conversation, and the tab
+// it happens to be in is an implementation detail of where you put it.
+func (m *Module) SelectSession(id string) bool {
+	m.mu.Lock()
+	found := -1
+	for i, t := range m.tabs {
+		l, ok := t.mod.(module.Sessioner)
+		if !ok {
+			continue
+		}
+		for _, held := range l.Sessions() {
+			if held == id {
+				found = i
+				break
+			}
+		}
+		if found >= 0 {
+			break
+		}
+	}
+	m.mu.Unlock()
+	if found < 0 {
+		return false
+	}
+	m.Select(found)
+	return true
+}
+
 func (m *Module) Sessions() []string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -431,6 +461,18 @@ type finder interface {
 
 // Find, FindNext, FindClear and FindStatus reach the tab on screen. Searching
 // a tab you are not looking at would move a view you cannot see.
+// CanFind reports whether the tab on screen has anything to search. A tab is
+// what the search would run over, so a tab with no output means no search —
+// the strip is not what you are looking through.
+func (m *Module) CanFind() bool {
+	active := m.Active()
+	if c, ok := active.(interface{ CanFind() bool }); ok {
+		return c.CanFind()
+	}
+	_, ok := active.(finder)
+	return ok
+}
+
 func (m *Module) Find(query string) int {
 	f, ok := m.Active().(finder)
 	if !ok {
