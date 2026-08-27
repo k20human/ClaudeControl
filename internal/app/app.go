@@ -101,6 +101,9 @@ type App struct {
 	// menu the terminal would otherwise have shown.
 	menu *menuState
 
+	// conv is the open search across the conversations on disk.
+	conv *convSearch
+
 	// find is the open search, if any. It names the pane it searches: what
 	// you are looking for is in that pane's history.
 	find *findState
@@ -553,6 +556,7 @@ func (a *App) draw() {
 	a.drawSettingsPanel(a.scr)
 	a.drawPaneDrag(a.scr)
 	a.drawFind(a.scr)
+	a.drawConvSearch(a.scr)
 	a.drawMenu(a.scr)
 	a.drawPalette(a.scr)
 	a.drawOverlay(a.scr)
@@ -566,7 +570,7 @@ func (a *App) draw() {
 // one is open the cursor has no business being shown.
 func (a *App) cursorTarget() (x, y int, visible bool) {
 	if a.overlay != overlayNone || a.sessionPanel != nil || a.settingsPanel != nil ||
-		a.palette != nil || a.menu != nil || a.find != nil {
+		a.palette != nil || a.menu != nil || a.find != nil || a.conv != nil {
 		return 0, 0, false
 	}
 	m, ok := a.modules[a.focus]

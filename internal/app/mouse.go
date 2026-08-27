@@ -132,6 +132,33 @@ func (a *App) handleMouse(ev uv.MouseEvent, m uv.Mouse) {
 		return
 	}
 
+	// The conversation search answers to the pointer as well as the keyboard:
+	// a click on a result opens it, and one outside closes the panel.
+	if a.conv != nil {
+		// The wheel walks the results, which is what a wheel over a list is
+		// for; the selection carries the view with it.
+		if w, isWheel := ev.(uv.MouseWheelEvent); isWheel {
+			if w.Button == uv.MouseWheelUp {
+				a.scrollConv(-1)
+			} else if w.Button == uv.MouseWheelDown {
+				a.scrollConv(1)
+			}
+			return
+		}
+		if _, isClick := ev.(uv.MouseClickEvent); isClick {
+			r := a.convPanelRect()
+			hits, _, _ := a.conv.results()
+			if row := a.conv.top + (m.Y-r.Y-3)/3; m.Y >= r.Y+3 && row < len(hits) &&
+				m.X >= r.X && m.X < r.X+r.W {
+				a.conv.selected = row
+				a.openConversation()
+				return
+			}
+			a.closeConvSearch()
+		}
+		return
+	}
+
 	if a.palette != nil {
 		if _, isClick := ev.(uv.MouseClickEvent); isClick {
 			r := a.palettePanelRect()

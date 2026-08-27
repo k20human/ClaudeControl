@@ -52,7 +52,12 @@ var bindings = []binding{
 	// Free in the Claude Code binary, meaningless as an escape sequence, not a
 	// readline binding — alt+b and alt+f move by word in every shell — and
 	// unshifted on an AZERTY keyboard.
-	{[]string{"alt+:"}, "alt+:", "find in this pane", func(a *App) { a.toggleFind() }},
+	{[]string{"alt+:"}, "alt+:", "search your conversations", func(a *App) { a.toggleConvSearch() }},
+	// No keys of its own: the pane it searches is the one you right-clicked,
+	// and the click is what says which. Listed here all the same so the help
+	// panel and the palette know about it — an action reachable only from a
+	// menu nobody opens is an action nobody has.
+	{nil, "right-click", "find in this pane", func(a *App) { a.toggleFind() }},
 	{[]string{"alt+g"}, "alt+g", "this panel", func(a *App) { a.overlay = overlayHelp }},
 	{[]string{"alt+q"}, "alt+q", "quit", func(a *App) { a.overlay = overlayQuit }},
 }
@@ -120,6 +125,9 @@ func (a *App) handleKey(e uv.KeyPressEvent) {
 		return
 	}
 	if a.findKey(e) {
+		return
+	}
+	if a.convKey(e) {
 		return
 	}
 

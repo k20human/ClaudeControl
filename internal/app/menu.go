@@ -52,7 +52,9 @@ func (a *App) menuItems() []menuItem {
 	return []menuItem{
 		{"copy", clip, (*App).copySelection},
 		{"paste", clip, (*App).pasteFromClipboard},
-		{"find", "alt+:", (*App).toggleFind},
+		// The pane you clicked is the pane this searches, which is what a
+		// right-click means: the conversation-wide search is the bar's.
+		{"find here", "", (*App).toggleFind},
 		{"new session", "alt+n", func(a *App) { _ = a.newPane(layout.Horizontal) }},
 		{"close pane", "alt+x", func(a *App) { _ = a.closePane(a.focus) }},
 		{"zoom", "alt+z", (*App).toggleZoom},

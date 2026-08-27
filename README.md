@@ -436,7 +436,7 @@ actually working** — an idle window stays idle.
 | `alt+m` / `alt+s` | flip a split / reset every split to equal shares |
 | `alt+r` | pick this pane up, then click where it lands |
 | `alt+;` / `alt+'` | previous tab, next tab, in a pane of tabs |
-| `alt+:` | find in this pane |
+| `alt+:` | search your Claude conversations |
 | `alt+space` / `alt+,` / `alt+/` | sessions, settings, command palette |
 | `alt+g` / `alt+q` | help, quit |
 
@@ -450,10 +450,10 @@ resize. `alt`-drag a pane to move it: dropping it on the middle of another
 **swaps** the two, dropping it on a side **inserts** it there. Everything else
 goes to the guest, translated into the coordinates it expects.
 
-**Right-click** opens a small menu on the pane: copy, paste, new session,
-close, zoom, move. It exists because turning mouse reporting on takes the right button
-away from the terminal, and with it the menu the terminal would have shown —
-having taken it, the application owes one back.
+**Right-click** opens a small menu on the pane: copy, paste, find here, new
+session, close, zoom, move. It exists because turning mouse reporting on takes
+the right button away from the terminal, and with it the menu the terminal
+would have shown — having taken it, the application owes one back.
 
 ## Pasting
 
@@ -465,9 +465,42 @@ for shortcuts.
 reason: a terminal application has no way of its own to reach the clipboard.
 See *Selecting and copying* below.
 
+## Searching your conversations
+
+`alt+:` or the `⌕ find` button in the bar opens a search across **every Claude
+conversation on this machine** — not the pane in front of you. What you
+remember saying is usually in a conversation you closed days ago, which is the
+one case a search of the visible screen cannot help with.
+
+It reads the transcripts Claude Code writes under `~/.claude/projects`
+(`CLAUDE_CONFIG_DIR` is honoured, as Claude Code honours it). Four hundred
+megabytes across three hundred conversations takes about a fifth of a second on
+a normal machine, so the search runs off the drawing loop, one at a time, with
+the newest query winning: type quickly and you pay for one search, not one per
+letter.
+
+Only **what was said** is searched — your prompts and Claude's replies. Tool
+results, the contents of files that were read, and thinking are skipped. A word
+that is common in code would otherwise match every conversation that ever
+opened a source file, which is the opposite of finding something.
+
+Each result gives the conversation's name, the directory it ran in, how long
+ago, how many times the word appears, and a line of what was actually said
+around the first one — that last line is what tells you whether it is the
+conversation you meant. `↑` `↓` or the wheel move, `⏎` or a click **opens it in
+a new tab** of the focused pane, resumed where it left off. Escape closes the
+panel, and so does a click anywhere outside it.
+
+Results are ordered newest first rather than by how often the word appears: you
+are usually looking for something recent, and a conversation from a month ago
+that repeated a word forty times is not more relevant for having done so.
+
 ## Finding something in a pane
 
-`alt+:`, the `⌕ find` button in the bar, or `find` in the right-click menu.
+**Right-click → find here**. The click already says which pane you mean, which
+is why this one has no shortcut and the bar's button goes to the conversations
+instead. It is the search for a service's log or a long build.
+
 Type and the matches appear as you go, counted on the right (`3/17`) or told
 plainly that there are `none` — a search that looked and found nothing must
 not look like a search that never ran.
@@ -482,7 +515,7 @@ undo that.
 While the bar is open every key belongs to it. A query is text, and a letter
 that reached the guest would be a letter missing from what you meant to find.
 
-The shortcut is `alt+:` for three reasons, each checked: it is absent from the
+`alt+:` was chosen for three reasons, each checked: it is absent from the
 Claude Code binary, it means nothing as an escape sequence, and it is not a
 readline binding — `alt+b` and `alt+f` move by word in every shell this can
 host.
