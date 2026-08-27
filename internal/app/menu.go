@@ -46,11 +46,15 @@ func (a *App) menuItems() []menuItem {
 	// Finding out afterwards, from a message about a copy that did not
 	// happen, is finding out too late.
 	clip := ""
+	copyNote := "alt+c"
 	if _, ok := clipboard.Helper(); !ok {
 		clip = "no clipboard tool"
+		// The warning displaces the key: a shortcut for something that cannot
+		// work is not the thing you need to be told.
+		copyNote = clip
 	}
 	return []menuItem{
-		{"copy", clip, (*App).copySelection},
+		{"copy", copyNote, (*App).copySelection},
 		{"paste", clip, (*App).pasteFromClipboard},
 		// The pane you clicked is the pane this searches, which is what a
 		// right-click means: the conversation-wide search is the bar's.

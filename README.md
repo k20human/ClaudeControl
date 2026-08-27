@@ -313,6 +313,15 @@ change of state is something you watch happen. Each turn of conversation fires
 a spark along a great circle — nothing fires on a timer, so a quiet panel means
 quiet sessions.
 
+**All three styles speak the same vocabulary**, in whatever shapes they have.
+The `ring` breathes deeply at rest and shallowly at work, is swept by one
+bright arc while a session waits on you, and comes apart into gaps when a
+session dies. The `avatar` cannot rotate or scatter without becoming a
+different face, so it reads only the parts that survive being a face: the glow
+travels furthest while waiting, barely at rest, and the eyes blink — a face
+that never blinks is the one thing that reads as dead. Pick a style for the
+room you have, not for what it will tell you.
+
 The text column carries an ambient line and then what actually happened: a
 session appearing, a state changing, a turn landing. **No conversation content
 ever reaches it.** The ambient line is decoration, and decoration on a control
@@ -437,12 +446,15 @@ actually working** — an idle window stays idle.
 | `alt+r` | pick this pane up, then click where it lands |
 | `alt+;` / `alt+'` | previous tab, next tab, in a pane of tabs |
 | `alt+:` | search your Claude conversations |
+| `alt+c` | copy the selection |
 | `alt+space` / `alt+,` / `alt+/` | sessions, settings, command palette |
 | `alt+g` / `alt+q` | help, quit |
 
-Every one of these is a button in the bottom bar as well. A narrow window drops
-the least important buttons rather than overlapping them; the keyboard and the
-help panel still reach everything.
+Every one of these is a button in the bottom bar as well. **Rest the pointer on
+a button** and a line above the bar says what it does and which key does the
+same — an icon is legible to the person who chose it and nobody else. A narrow
+window drops the least important buttons rather than overlapping them; the
+keyboard and the help panel still reach everything.
 
 With the mouse: click a pane to focus it — that first click is **swallowed**, so
 moving to a pane can never trigger something inside it. Drag a divider to
@@ -522,7 +534,8 @@ host.
 
 ## Selecting and copying
 
-Drag across a pane to select, right-click and choose **copy**. A guest that
+Drag across a pane to select, then `alt+c` — or right-click and choose
+**copy**. A guest that
 asked only for button events — Claude Code does — cannot see a drag at all: it
 arrives as a press and a release with nothing in between. The gesture is
 therefore free, and it is the one people expect to select text with.
@@ -562,11 +575,18 @@ behind it, since nothing has scrolled off. Forwarding is the only thing that
 could be right there, and the alternate screen is how the two are told apart.
 
 Every `alt+` combination above was checked against the Claude Code binary, and
-none of them is one Claude Code consumes. They were also checked against the
-ANSI standard, which rules out more than you would think: `alt+=` is DECKPAM,
-`alt+[` is CSI itself, `alt+c` is a full terminal reset, and `alt+-` designates
-a character set. A decoder reads all four as sequences, and the key never
-arrives.
+none of them is one Claude Code consumes. Each was then sent through a hosting
+emulator to see whether it arrives at all, which rules out more than you would
+think: `alt+=` is DECKPAM, `alt+[` is CSI itself and `alt+-` designates a
+character set, so an emulator between you and the application eats all three
+and the key never lands.
+
+That test is a round trip, not a reading of the standard. `ESC c` is a full
+reset **on the way out** to a terminal and nothing at all on the way in, so
+`alt+c` arrives intact and is free to mean copy. The cost is that a shell
+running in a pane no longer sees it: readline binds it to capitalize-word,
+which is the one thing given up for the letter everybody associates with
+copying.
 
 ---
 

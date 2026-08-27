@@ -21,11 +21,14 @@ var (
 	barHotFg   = color.RGBA{R: 0x10, G: 0x16, B: 0x1e, A: 0xff}
 	barQuitFg  = color.RGBA{R: 0xe5, G: 0x6b, B: 0x6b, A: 0xff}
 	barCountFg = color.RGBA{R: 0x5d, G: 0x69, B: 0x7c, A: 0xff}
+	barHintBg  = color.RGBA{R: 0x24, G: 0x2e, B: 0x3d, A: 0xff}
+	barHintFg  = color.RGBA{R: 0xc7, G: 0xd2, B: 0xe0, A: 0xff}
 )
 
 // button is one clickable label in the status bar.
 type button struct {
 	label string
+	hint  string // shown above the bar while the pointer is on it
 	rect  layout.Rect
 	run   func(a *App)
 	warn  bool // drawn in the warning colour
@@ -42,21 +45,25 @@ func (a *App) buildStatusBar() []button {
 	// Ordered by what would be missed most, because a narrow bar drops from
 	// the end. Help goes early despite being the least used: it is how the
 	// rest is discovered, and a bar that drops it leaves nothing to ask.
+	// The hint is what the button does, said the way the help panel says it,
+	// plus the key that does the same thing. An icon is only legible to the
+	// person who chose it.
 	items := []struct {
 		label string
+		hint  string
 		run   func(a *App)
 		warn  bool
 	}{
-		{"+ new", func(a *App) { _ = a.newPane(layout.Horizontal) }, false},
-		{"× close", func(a *App) { _ = a.closePane(a.focus) }, false},
-		{"◫ list", func(a *App) { a.toggleSessionPanel() }, false},
-		{"? help", func(a *App) { a.overlay = overlayHelp }, false},
-		{"⌕ find", func(a *App) { a.toggleConvSearch() }, false},
-		{"⚙ set", func(a *App) { a.toggleSettingsPanel() }, false},
-		{"⌘ cmd", func(a *App) { a.togglePalette() }, false},
-		{"▣ zoom", func(a *App) { a.toggleZoom() }, false},
-		{"⇄ flip", func(a *App) { a.rotateFocusedSplit() }, false},
-		{"≡ equal", func(a *App) { a.evenOutSplits() }, false},
+		{"+ new", "split this pane and start a session  ·  alt+n", func(a *App) { _ = a.newPane(layout.Horizontal) }, false},
+		{"× close", "close the tab, or the pane  ·  alt+x", func(a *App) { _ = a.closePane(a.focus) }, false},
+		{"◫ list", "every session, running or not  ·  alt+space", func(a *App) { a.toggleSessionPanel() }, false},
+		{"? help", "every key and gesture  ·  alt+g", func(a *App) { a.overlay = overlayHelp }, false},
+		{"⌕ find", "search your Claude conversations  ·  alt+:", func(a *App) { a.toggleConvSearch() }, false},
+		{"⚙ set", "settings, written back to your config  ·  alt+,", func(a *App) { a.toggleSettingsPanel() }, false},
+		{"⌘ cmd", "run any action by name  ·  alt+/", func(a *App) { a.togglePalette() }, false},
+		{"▣ zoom", "this pane alone, and back  ·  alt+z", func(a *App) { a.toggleZoom() }, false},
+		{"⇄ flip", "side by side <-> stacked  ·  alt+m", func(a *App) { a.rotateFocusedSplit() }, false},
+		{"≡ equal", "reset every split to equal shares  ·  alt+s", func(a *App) { a.evenOutSplits() }, false},
 	}
 
 	y := a.area.H - 1
@@ -114,6 +121,7 @@ func (a *App) buildStatusBar() []button {
 		}
 		out = append(out, button{
 			label: it.label,
+			hint:  it.hint,
 			rect:  layout.Rect{X: x, Y: y, W: w, H: 1},
 			run:   it.run,
 			warn:  it.warn,
@@ -124,6 +132,7 @@ func (a *App) buildStatusBar() []button {
 	if quitX > x {
 		out = append(out, button{
 			label: quit,
+			hint:  "end every session and leave  ·  alt+q",
 			rect:  layout.Rect{X: quitX, Y: y, W: quitW, H: 1},
 			run:   func(a *App) { a.overlay = overlayQuit },
 			warn:  true,
@@ -203,6 +212,42 @@ func (a *App) drawStatusBar(scr uv.Screen) {
 	}
 
 	a.drawBarUsage(scr, y)
+	a.drawBarHint(scr, y)
+}
+
+// drawBarHint says what the button under the pointer does, on the row above
+// the bar.
+//
+// A terminal application cannot change the mouse cursor, and it cannot show a
+// floating tip either — so the tip is a row of the screen, borrowed from the
+// pane above while the pointer rests on a button and given back the moment it
+// leaves. That is why the pointer moving on and off a button asks for a full
+// repaint: the row underneath belongs to somebody else.
+func (a *App) drawBarHint(scr uv.Screen, y int) {
+	if y < 1 || a.hoverBtn < 0 || a.hoverBtn >= len(a.buttons) {
+		return
+	}
+	b := a.buttons[a.hoverBtn]
+	if b.hint == "" || (a.showingStatus() && !b.warn) {
+		return
+	}
+	label := " " + b.hint + " "
+	w := ansi.StringWidth(label)
+	if w > a.area.W {
+		label = clipBar(label, a.area.W)
+		w = ansi.StringWidth(label)
+	}
+	// Anchored on the button, then pushed back inside the screen: a tip that
+	// ran off the edge would lose its last words, which are usually the key.
+	x := b.rect.X
+	if x+w > a.area.W {
+		x = a.area.W - w
+	}
+	if x < 0 {
+		x = 0
+	}
+	render.Fill(scr, uv.Rect(x, y-1, w, 1), barHintBg)
+	render.Text(scr, x, y-1, label, barHintFg, barHintBg)
 }
 
 // drawBarUsage reprises the account's budgets in the bar, so the figure is

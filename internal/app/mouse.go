@@ -205,7 +205,13 @@ func (a *App) handleMouse(ev uv.MouseEvent, m uv.Mouse) {
 	}
 
 	a.hoverDiv = dividerAt(a.divs, m.X, m.Y)
-	a.hoverBtn = a.buttonUnder(m.X, m.Y)
+	// The tip is drawn on a row that belongs to a pane, so moving on or off a
+	// button has to hand that row back: a full repaint is what does it.
+	if over := a.buttonUnder(m.X, m.Y); over != a.hoverBtn {
+		a.hoverBtn = over
+		a.clearNext = true
+		a.Wake()
+	}
 
 	if i := a.hoverBtn; i >= 0 {
 		if _, isClick := ev.(uv.MouseClickEvent); isClick {

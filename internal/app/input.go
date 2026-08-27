@@ -58,6 +58,12 @@ var bindings = []binding{
 	// panel and the palette know about it — an action reachable only from a
 	// menu nobody opens is an action nobody has.
 	{nil, "right-click", "find in this pane", func(a *App) { a.toggleFind() }},
+	// Absent from the Claude Code 2.1.247 binary, and it reaches the
+	// application intact through a hosting emulator — ESC c is a full reset
+	// only on the way out to a terminal, never on the way in. It does shadow
+	// readline's capitalize-word in a shell, which is the price of the one
+	// letter everybody already associates with copying.
+	{[]string{"alt+c"}, "alt+c", "copy the selection", func(a *App) { a.copySelection() }},
 	{[]string{"alt+g"}, "alt+g", "this panel", func(a *App) { a.overlay = overlayHelp }},
 	{[]string{"alt+q"}, "alt+q", "quit", func(a *App) { a.overlay = overlayQuit }},
 }

@@ -230,6 +230,39 @@ func TestCopyWithAClipboardToolCopies(t *testing.T) {
 	t.Errorf("the clipboard received %q; the bar says %q", string(raw), snap().row(H-1))
 }
 
+// The menu is three gestures away from a selection you have already made.
+// alt+c is one, and it copies the same text the menu would.
+//
+// The key had to pass the same three tests as every other: absent from the
+// Claude Code binary, intact through a hosting emulator, and cheap to give up
+// in a shell — it shadows readline's capitalize-word and nothing else.
+func TestTheCopyShortcutCopies(t *testing.T) {
+	const W, H = 70, 10
+	env, out := fakeClipboard(t)
+	s, snap := runWithEnv(t, selectConfig(t, `"printf 'SHORTCUT-HERE'; cat"`), W, H,
+		vt.Callbacks{}, env)
+	waitForAnywhere(t, snap, "SHORTCUT-HERE")
+
+	row := paneRow0
+	from := columnOf(snap().row(row), "SHORTCUT")
+	click(t, s, 5, row)
+	press(t, s, from, row)
+	drag(t, s, from+7, row)
+	release(t, s, from+7, row)
+
+	s.SendText("\x1bc") // alt+c
+
+	deadline := time.Now().Add(4 * time.Second)
+	for time.Now().Before(deadline) {
+		if raw, err := os.ReadFile(out); err == nil && strings.Contains(string(raw), "SHORTCUT") {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	raw, _ := os.ReadFile(out)
+	t.Errorf("the clipboard received %q; the bar says %q", string(raw), snap().row(H-1))
+}
+
 // A pane of tabs stands between the application and what it holds, and the
 // selected text has to reach across it. It did not: copy answered "nothing in
 // this pane can be selected", which was true of the pane and false of the tab

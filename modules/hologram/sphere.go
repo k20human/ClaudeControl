@@ -11,7 +11,11 @@ import (
 	"claudecontrol/internal/render"
 )
 
-var bgPanel = color.RGBA{R: 0x06, G: 0x09, B: 0x12, A: 0xff}
+// bgPanel is the ground every hologram renderer paints first. Black rather
+// than the near-black blue it started as: on a screen beside a terminal of
+// any other colour the blue read as a tint rather than as depth, and what the
+// sphere hangs in should look like nothing at all.
+var bgPanel = color.RGBA{A: 0xff}
 
 // sphereRenderer draws the particle sphere.
 type sphereRenderer struct {
