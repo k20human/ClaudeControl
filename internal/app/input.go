@@ -41,8 +41,29 @@ var bindings = []binding{
 	// start a move without holding a button down. It picks the focused pane
 	// up; the next click, anywhere, chooses where it lands.
 	{[]string{"alt+r"}, "alt+r", "move this pane, then click a target", func(a *App) { a.beginPaneDrag(a.focus) }},
+	// Absent from the Claude Code binary, like the rest — and, unlike the
+	// obvious candidates, meaningless as escape sequences. ESC = is DECKPAM,
+	// ESC - designates a character set, ESC c is a full reset and ESC [ is
+	// CSI itself: a decoder reads all four as sequences rather than as keys,
+	// which was found by trying alt+= and watching nothing happen.
+	{[]string{"alt+;"}, "alt+;", "previous tab", func(a *App) { a.cycleTab(-1) }},
+	{[]string{"alt+'"}, "alt+'", "next tab", func(a *App) { a.cycleTab(1) }},
 	{[]string{"alt+g"}, "alt+g", "this panel", func(a *App) { a.overlay = overlayHelp }},
 	{[]string{"alt+q"}, "alt+q", "quit", func(a *App) { a.overlay = overlayQuit }},
+}
+
+// cycleTab moves through the tabs of the focused pane, if it has any.
+func (a *App) cycleTab(delta int) {
+	m, ok := a.modules[a.focus]
+	if !ok {
+		return
+	}
+	t, ok := m.(interface{ CycleTab(int) })
+	if !ok {
+		a.setStatus("this pane has no tabs")
+		return
+	}
+	t.CycleTab(delta)
 }
 
 func (a *App) handleKey(e uv.KeyPressEvent) {

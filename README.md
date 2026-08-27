@@ -309,6 +309,41 @@ aphorism.
 The column disappears below 44 columns of pane and the sphere takes the whole
 width. The five numbers above are also sliders in the settings menu.
 
+## `tabs` — several modules in one pane
+
+For a window that is not wide enough to split again. Splitting is better when
+there is room — you see two things at once — so this is what you reach for when
+there is not.
+
+```yaml
+- module: tabs
+  options:
+    tabs:
+      - title: brain          # optional, defaults to the module name
+        module: hologram
+        options: { style: sphere }
+      - title: services
+        module: supervisor
+        options:
+          services:
+            - { name: api, cmd: [npm, run, dev], dir: ~/projects/api }
+      - { title: usage, module: stats }
+```
+
+**Every module in the pane runs**, whether or not it is the one on screen: a
+supervisor still supervises from a hidden tab and a Claude session still
+answers. Only drawing is skipped, and every tab is resized with the pane so
+switching never shows one laid out for a size it no longer has.
+
+The strip **replaces the pane title** rather than adding a row — the point of
+tabs is that space is short. A label that does not fit is dropped whole and
+counted (`+2`), so the strip never lies about how many tabs there are.
+
+`alt+;` and `alt+'` move through them, and clicking a label picks one directly
+— though a click on an unfocused pane takes the focus and goes no further, so
+from another pane it takes two. A tab holding a Claude session waiting for you
+is marked with a dot, which is the whole reason a hidden tab is bearable.
+
 ## `sessions`
 
 The session list, reached with `alt+space`. It takes no options and is not
@@ -327,6 +362,7 @@ pane that would rearrange the window every time.
 | `alt+z` | zoom the focused pane, and back |
 | `alt+m` / `alt+s` | flip a split / reset every split to equal shares |
 | `alt+r` | pick this pane up, then click where it lands |
+| `alt+;` / `alt+'` | previous tab, next tab, in a pane of tabs |
 | `alt+space` / `alt+,` / `alt+/` | sessions, settings, command palette |
 | `alt+g` / `alt+q` | help, quit |
 
@@ -365,7 +401,11 @@ the bar says so and names the remedy, rather than a paste that quietly does
 nothing.
 
 Every `alt+` combination above was checked against the Claude Code binary, and
-none of them is one Claude Code consumes.
+none of them is one Claude Code consumes. They were also checked against the
+ANSI standard, which rules out more than you would think: `alt+=` is DECKPAM,
+`alt+[` is CSI itself, `alt+c` is a full terminal reset, and `alt+-` designates
+a character set. A decoder reads all four as sequences, and the key never
+arrives.
 
 ---
 

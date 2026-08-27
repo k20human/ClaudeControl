@@ -15,6 +15,7 @@ import (
 	_ "claudecontrol/modules/sessions"
 	_ "claudecontrol/modules/stats"
 	_ "claudecontrol/modules/supervisor"
+	_ "claudecontrol/modules/tabs"
 	_ "claudecontrol/modules/tasks"
 	_ "claudecontrol/modules/term"
 )
