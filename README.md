@@ -142,6 +142,13 @@ the application has written to it.
     args: [--model, opus]    # extra arguments, appended
 ```
 
+**Conversations come back.** Every run records the Claude sessions that were
+open, in the order their panes appear, and the next run hands them out in that
+order — each pane starts with `--resume` on the conversation it had. Rearrange
+the panes between runs and a conversation lands in a different one, which is
+predictable and far better than losing it. A `resume` written here by hand
+always wins: it was put there on purpose.
+
 The session is given a stable identity, so closing its pane does not end it and
 reopening finds it again. Hooks are wired automatically, through `--settings`
 on that session alone — **your global `settings.json` is not touched**. That is
@@ -499,7 +506,9 @@ arrives.
 # What it deliberately does not do
 
 - **No detaching.** Closing the application ends the processes it started.
-  Adopted services survive it; sessions and supervised services do not.
+  Adopted services survive it; supervised services do not. Conversations come
+  back on the next run (see below), but as new processes reading the same
+  transcript rather than the ones you left running.
 - **No monetary cost.** Token counts are shown as absolute numbers, never
   converted to money, and never as a percentage of a context window whose
   published value goes stale without saying so.

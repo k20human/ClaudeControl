@@ -8,18 +8,20 @@ import (
 	"path/filepath"
 
 	"claudecontrol/internal/layout"
+	"claudecontrol/internal/module"
 )
 
-// PaneSnapshot is one pane, as it was when the application last changed shape.
-type PaneSnapshot struct {
-	Module    string `json:"module"`
-	Dir       string `json:"dir,omitempty"`
-	SessionID string `json:"session_id,omitempty"`
-}
-
-// Snapshot is what the next run offers to bring back.
+// Snapshot is what a run leaves for the next one.
+//
+// A flat list of session ids rather than a picture of the layout. The
+// conversations are what closing the application costs you; the arrangement is
+// in the configuration file and comes back on its own. A list also survives
+// rearranging the panes between runs, where anything shaped like the layout
+// would not.
 type Snapshot struct {
-	Panes []PaneSnapshot `json:"panes"`
+	// Sessions are the Claude sessions that were open, in the order their
+	// panes appear. The next run hands them out in that order.
+	Sessions []string `json:"sessions"`
 }
 
 // SnapshotPath is where the snapshot lives.
@@ -80,24 +82,26 @@ func LoadSnapshot(path string) (Snapshot, error) {
 	return s, nil
 }
 
-// saveSnapshot records the panes so a later run can bring them back.
+// saveSnapshot records the open conversations so a later run can bring them
+// back.
 //
 // Failures are silent: this is a convenience, and a warning about it would sit
 // on top of a live session.
 func (a *App) saveSnapshot() {
-	type sessioned interface{ SessionID() string }
 	var snap Snapshot
 	for _, id := range layout.Leaves(a.root) {
 		m, ok := a.modules[id]
 		if !ok {
 			continue
 		}
-		p := PaneSnapshot{Module: "term"}
-		if sm, ok := m.(sessioned); ok {
-			p.Module = "claude"
-			p.SessionID = sm.SessionID()
+		// Sessions rather than SessionID: a pane may hold several, and a pane
+		// of tabs holds whatever its tabs do. A shell reports none — a fresh
+		// shell is not something to bring back.
+		lister, ok := m.(module.Sessioner)
+		if !ok {
+			continue
 		}
-		snap.Panes = append(snap.Panes, p)
+		snap.Sessions = append(snap.Sessions, lister.Sessions()...)
 	}
 	_ = SaveSnapshot(SnapshotPath(), snap)
 }

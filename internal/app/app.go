@@ -170,9 +170,14 @@ func New(cfgPath string) (*App, error) {
 		go a.pumpHooks()
 	}
 
+	// The conversations the last run left behind, handed out in the order the
+	// panes appear — the same order they were recorded in.
+	resuming, _ := LoadSnapshot(SnapshotPath())
+	pending := append([]string(nil), resuming.Sessions...)
+
 	for _, id := range layout.Leaves(root) {
 		spec := panes[id]
-		m, err := module.New(spec.Module, spec.Options)
+		m, err := module.New(spec.Module, withResume(spec.Module, spec.Options, &pending))
 		if err != nil {
 			return nil, fmt.Errorf("pane %d: %w", id, err)
 		}
@@ -190,6 +195,61 @@ func New(cfgPath string) (*App, error) {
 		a.prev = ids[0]
 	}
 	return a, nil
+}
+
+// withResume gives a pane about to be built the session it had last time.
+//
+// In the order they appear, which is the order they were saved in. Rearranging
+// the panes between runs therefore hands a conversation to a different pane —
+// predictable, and far less surprising than losing it. A resume written in the
+// configuration by hand always wins: it was put there on purpose.
+func withResume(name string, opts map[string]any, pending *[]string) map[string]any {
+	switch name {
+	case "claude":
+		if len(*pending) == 0 {
+			return opts
+		}
+		if _, set := opts["resume"]; set {
+			return opts
+		}
+		id := (*pending)[0]
+		*pending = (*pending)[1:]
+		out := make(map[string]any, len(opts)+1)
+		for k, v := range opts {
+			out[k] = v
+		}
+		out["resume"] = id
+		return out
+
+	case "tabs":
+		raw, ok := opts["tabs"].([]any)
+		if !ok {
+			return opts
+		}
+		tabs := make([]any, 0, len(raw))
+		for _, item := range raw {
+			spec, ok := item.(map[string]any)
+			if !ok {
+				tabs = append(tabs, item)
+				continue
+			}
+			inner, _ := spec["module"].(string)
+			nested, _ := spec["options"].(map[string]any)
+			copied := make(map[string]any, len(spec))
+			for k, v := range spec {
+				copied[k] = v
+			}
+			copied["options"] = withResume(inner, nested, pending)
+			tabs = append(tabs, copied)
+		}
+		out := make(map[string]any, len(opts))
+		for k, v := range opts {
+			out[k] = v
+		}
+		out["tabs"] = tabs
+		return out
+	}
+	return opts
 }
 
 // moduleContext is what every module is handed at Init.

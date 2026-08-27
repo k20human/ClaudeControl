@@ -8,10 +8,7 @@ import (
 
 func TestSnapshotRoundTrips(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "state.json")
-	want := Snapshot{Panes: []PaneSnapshot{
-		{Module: "claude", Dir: "/home/k/portal", SessionID: "aaa"},
-		{Module: "claude", Dir: "/home/k/api", SessionID: "bbb"},
-	}}
+	want := Snapshot{Sessions: []string{"aaa", "bbb"}}
 	if err := SaveSnapshot(p, want); err != nil {
 		t.Fatalf("SaveSnapshot: %v", err)
 	}
@@ -19,7 +16,7 @@ func TestSnapshotRoundTrips(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadSnapshot: %v", err)
 	}
-	if len(got.Panes) != 2 || got.Panes[1].SessionID != "bbb" {
+	if len(got.Sessions) != 2 || got.Sessions[1] != "bbb" {
 		t.Fatalf("LoadSnapshot = %+v, want %+v", got, want)
 	}
 }
@@ -30,7 +27,7 @@ func TestLoadSnapshotOfAMissingFileIsEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadSnapshot: %v", err)
 	}
-	if len(got.Panes) != 0 {
+	if len(got.Sessions) != 0 {
 		t.Fatalf("LoadSnapshot = %+v, want an empty snapshot", got)
 	}
 }
@@ -46,7 +43,7 @@ func TestACorruptSnapshotIsTreatedAsEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadSnapshot: %v", err)
 	}
-	if len(got.Panes) != 0 {
+	if len(got.Sessions) != 0 {
 		t.Fatalf("LoadSnapshot = %+v, want an empty snapshot", got)
 	}
 }
@@ -56,7 +53,7 @@ func TestACorruptSnapshotIsTreatedAsEmpty(t *testing.T) {
 func TestSaveSnapshotLeavesNoTemporaryFileBehind(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "state.json")
-	if err := SaveSnapshot(p, Snapshot{Panes: []PaneSnapshot{{Module: "claude"}}}); err != nil {
+	if err := SaveSnapshot(p, Snapshot{Sessions: []string{"aaa"}}); err != nil {
 		t.Fatalf("SaveSnapshot: %v", err)
 	}
 	entries, err := os.ReadDir(dir)

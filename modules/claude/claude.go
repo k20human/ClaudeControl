@@ -110,6 +110,15 @@ func (m *Module) Init(ctx module.Context) error {
 	return nil
 }
 
+// Sessions is this one conversation, which is what a later run would bring
+// back.
+func (m *Module) Sessions() []string {
+	if id := m.SessionID(); id != "" {
+		return []string{id}
+	}
+	return nil
+}
+
 // SessionID is the identity imposed on, or adopted by, this session.
 func (m *Module) SessionID() string {
 	if m.resume != "" {

@@ -63,6 +63,16 @@ type Titler interface {
 	Title() (string, bool)
 }
 
+// Sessioner is implemented by modules that hold conversations worth bringing
+// back. A module holding several — a pane of tabs — reports them all, in the
+// order they appear.
+//
+// A shell implements nothing here on purpose: a fresh shell is not something
+// to resume.
+type Sessioner interface {
+	Sessions() []string
+}
+
 // Provider is implemented by modules that let you change something. The menu
 // is built from what they publish, so a module gains an editable setting by
 // describing it rather than by drawing a widget.

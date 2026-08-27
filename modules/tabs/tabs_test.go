@@ -200,6 +200,7 @@ func (p *probe) Resize(int, int) error        { return nil }
 func (p *probe) Draw(uv.Screen, uv.Rectangle) {}
 func (p *probe) Close() error                 { return nil }
 func (p *probe) SessionID() string            { return p.id }
+func (p *probe) Sessions() []string           { return []string{p.id} }
 
 func init() {
 	module.Register("probe", func(cfg map[string]any) (module.Module, error) {
@@ -449,6 +450,7 @@ func TestEveryInterfaceTheApplicationLooksForIsPassedThrough(t *testing.T) {
 		{"SessionID", implements[interface{ SessionID() string }](m)},
 		{"ScrollOffset", implements[interface{ ScrollOffset() int }](m)},
 		{"SelectedText", implements[interface{ SelectedText() string }](m)},
+		{"Sessions", implements[module.Sessioner](m)},
 		{"Values", implements[interface{ Values() map[string]any }](m)},
 		{"Title", implements[interface{ Title() (string, bool) }](m)},
 		{"Cursor", implements[module.Cursorer](m)},
@@ -484,5 +486,30 @@ func TestTheSelectionComesFromTheTabOnScreen(t *testing.T) {
 	sel := m.(interface{ SelectedText() string })
 	if got := sel.SelectedText(); got != "" {
 		t.Errorf("nothing is selected, yet the pane reports %q", got)
+	}
+}
+
+// A pane of tabs holds conversations, and a later run brings back every one of
+// them — not only the tab that happened to be in front.
+func TestEveryTabsConversationIsRecorded(t *testing.T) {
+	m := build(t, map[string]any{"tabs": []any{
+		map[string]any{"title": "one", "module": "probe", "options": map[string]any{"id": "sess-one"}},
+		map[string]any{"title": "shell", "module": "term", "options": shell("cat")},
+		map[string]any{"title": "two", "module": "probe", "options": map[string]any{"id": "sess-two"}},
+	}}, module.Context{Wake: func() {}})
+
+	lister, ok := m.(module.Sessioner)
+	if !ok {
+		t.Fatal("a pane of tabs does not report its conversations")
+	}
+	got := lister.Sessions()
+	want := []string{"sess-one", "sess-two"}
+	if len(got) != len(want) {
+		t.Fatalf("Sessions = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("Sessions = %v, want %v", got, want)
+		}
 	}
 }

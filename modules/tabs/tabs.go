@@ -407,6 +407,20 @@ func (m *Module) SessionID() string {
 	return s.SessionID()
 }
 
+// Sessions are the conversations in every tab, in order — not only the one on
+// screen. A tab you were not looking at is still one you want back.
+func (m *Module) Sessions() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []string
+	for _, t := range m.tabs {
+		if l, ok := t.mod.(module.Sessioner); ok {
+			out = append(out, l.Sessions()...)
+		}
+	}
+	return out
+}
+
 // SelectedText is what is selected in the tab on screen.
 func (m *Module) SelectedText() string {
 	s, ok := m.Active().(interface{ SelectedText() string })
