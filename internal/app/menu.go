@@ -43,6 +43,7 @@ type menuState struct {
 // menu the terminal would have shown. Having taken it, we owe one back.
 func menuItems() []menuItem {
 	return []menuItem{
+		{"copy", "", (*App).copySelection},
 		{"paste", "", (*App).pasteFromClipboard},
 		{"new session", "alt+n", func(a *App) { _ = a.newPane(layout.Horizontal) }},
 		{"close pane", "alt+x", func(a *App) { _ = a.closePane(a.focus) }},
@@ -202,6 +203,42 @@ func (a *App) pasteFromClipboard() {
 		a.deliverPaste(text)
 	case errors.Is(err, clipboard.ErrNoHelper):
 		a.askTerminalForClipboard()
+	default:
+		a.setStatus("%s", err)
+	}
+}
+
+// copySelection puts the focused pane's selection on the clipboard.
+//
+// The same two ways as reading, and the same order: a helper program if one is
+// installed, and otherwise the terminal itself over OSC 52. Writing is the
+// half terminals are likelier to allow, since handing text to the clipboard
+// gives nothing away.
+func (a *App) copySelection() {
+	m, ok := a.modules[a.focus]
+	if !ok {
+		return
+	}
+	sel, ok := m.(interface{ SelectedText() string })
+	if !ok {
+		a.setStatus("nothing in this pane can be selected")
+		return
+	}
+	text := sel.SelectedText()
+	if text == "" {
+		a.setStatus("nothing is selected — drag across the text first")
+		return
+	}
+
+	switch err := clipboard.Write(text, 300*time.Millisecond); {
+	case err == nil:
+		a.setStatus("copied %d characters", len([]rune(text)))
+	case errors.Is(err, clipboard.ErrNoHelper):
+		// No helper, so ask the terminal to take it. There is no reply to
+		// wait for, and no way to know whether it accepted.
+		_, _ = a.term.Write([]byte(ansi.SetClipboard(ansi.SystemClipboard, text)))
+		a.setStatus("handed %d characters to the terminal — install wl-clipboard if it did not take them",
+			len([]rune(text)))
 	default:
 		a.setStatus("%s", err)
 	}

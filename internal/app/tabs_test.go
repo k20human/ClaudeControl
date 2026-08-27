@@ -136,23 +136,17 @@ func TestTheHostTerminalTitleFollowsTheSessions(t *testing.T) {
 
 	var mu sync.Mutex
 	var titles []string
-	install := func(term vt.Terminal) {
-		e, ok := term.(*vt.SafeEmulator)
-		if !ok {
-			return
-		}
-		e.SetCallbacks(vt.Callbacks{Title: func(s string) {
-			mu.Lock()
-			titles = append(titles, s)
-			mu.Unlock()
-		}})
-	}
+	watch := vt.Callbacks{Title: func(s string) {
+		mu.Lock()
+		titles = append(titles, s)
+		mu.Unlock()
+	}}
 
 	s, err := session.Start(session.Spec{
 		ID:        "claudecontrol",
 		Argv:      []string{bin, "-config", "testdata/one-pane.yaml"},
 		Dir:       ".",
-		Configure: install,
+		Callbacks: watch,
 		Env: []string{
 			"XDG_STATE_HOME=" + t.TempDir(),
 			"XDG_RUNTIME_DIR=" + runtimeDir,

@@ -209,17 +209,66 @@ func (m *Module) Mouse(e uv.MouseEvent) {
 	if m.sess == nil {
 		return
 	}
-	// The wheel reaches the history first, unless the guest has taken the
-	// whole screen and is drawing its own.
-	if w, ok := e.(uv.MouseWheelEvent); ok {
-		if m.view.Wheel(m.sess, w.Button == uv.MouseWheelUp) {
-			if m.ctx.Wake != nil {
-				m.ctx.Wake()
+	// A guest that follows the pointer is doing something with every gesture,
+	// and gets them all.
+	if m.sess.TracksMotion() {
+		m.sess.SendMouse(e)
+		return
+	}
+
+	switch ev := e.(type) {
+	case uv.MouseWheelEvent:
+		// The wheel reaches the history first, unless the guest has taken the
+		// whole screen and is drawing its own.
+		if m.view.Wheel(m.sess, ev.Button == uv.MouseWheelUp) {
+			m.wake()
+			return
+		}
+
+	case uv.MouseClickEvent:
+		if ev.Button == uv.MouseLeft {
+			// A press is a click until it moves. The guest gets it now,
+			// because a guest that asked for button events is entitled to
+			// them, and is owed a release later if this turns into a drag.
+			m.view.ClearSelection()
+			m.view.Press(m.sess, ev.X, ev.Y, true)
+			m.sess.SendMouse(e)
+			m.wake()
+			return
+		}
+
+	case uv.MouseMotionEvent:
+		if ev.Button == uv.MouseLeft {
+			first := !m.view.Dragging()
+			m.view.Drag(m.sess, ev.X, ev.Y)
+			if first && m.view.PressForwarded() {
+				// It was told the button went down and must not be left
+				// believing it still is.
+				m.sess.SendMouse(uv.MouseReleaseEvent(uv.Mouse{
+					X: ev.X, Y: ev.Y, Button: uv.MouseLeft,
+				}))
 			}
+			m.wake()
+			return
+		}
+
+	case uv.MouseReleaseEvent:
+		// The guest was already released when the drag began.
+		if m.view.Release() {
+			m.wake()
 			return
 		}
 	}
 	m.sess.SendMouse(e)
+}
+
+// SelectedText is what is selected in this pane, or empty.
+func (m *Module) SelectedText() string { return m.view.SelectedText(m.sess) }
+
+func (m *Module) wake() {
+	if m.ctx.Wake != nil {
+		m.ctx.Wake()
+	}
 }
 
 // Paste forwards pasted text without inspecting it.

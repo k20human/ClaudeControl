@@ -1,10 +1,12 @@
 package session_test
 
 import (
+	"github.com/charmbracelet/x/vt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -347,4 +349,78 @@ func scrolled(s *session.Session, w, h, offset int) string {
 		b.WriteByte('\n')
 	}
 	return b.String()
+}
+
+// Who a drag belongs to depends on whether the guest can see one. A guest that
+// asked only for button events cannot: a drag reaches it as a press and a
+// release with nothing in between, which is what leaves the gesture free.
+func TestTracksMotionFollowsWhatTheGuestAskedFor(t *testing.T) {
+	s, err := session.Start(session.Spec{
+		ID:     "modes",
+		Argv:   []string{"sh", "-c", "cat"},
+		Width:  30,
+		Height: 6,
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer s.Close()
+
+	if s.TracksMotion() {
+		t.Error("a fresh session claims to track the pointer")
+	}
+
+	// Button events only, which is what Claude Code asks for.
+	s.Term.WriteString("\x1b[?1000h\x1b[?1006h")
+	waitFor(t, "the modes to settle", func() bool { return true })
+	if s.TracksMotion() {
+		t.Error("button tracking was taken for motion tracking")
+	}
+
+	// Cell motion, which is what an editor with the mouse enabled asks for.
+	s.Term.WriteString("\x1b[?1002h")
+	waitFor(t, "motion tracking", func() bool { return s.TracksMotion() })
+
+	s.Term.WriteString("\x1b[?1002l")
+	waitFor(t, "motion tracking to stop", func() bool { return !s.TracksMotion() })
+
+	// And the other one.
+	s.Term.WriteString("\x1b[?1003h")
+	waitFor(t, "all-motion tracking", func() bool { return s.TracksMotion() })
+}
+
+// A caller's callbacks are added to the session's rather than replacing them:
+// SetCallbacks takes the whole set, and a caller installing its own would
+// silently drop the session's.
+func TestCallersCallbacksDoNotDropTheSessionsOwn(t *testing.T) {
+	var mu sync.Mutex
+	var seen []int
+	s, err := session.Start(session.Spec{
+		ID:     "both",
+		Argv:   []string{"sh", "-c", "cat"},
+		Width:  30,
+		Height: 6,
+		Callbacks: vt.Callbacks{EnableMode: func(m ansi.Mode) {
+			mu.Lock()
+			seen = append(seen, m.Mode())
+			mu.Unlock()
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer s.Close()
+
+	s.Term.WriteString("\x1b[?1002h")
+	waitFor(t, "the session's own callback", func() bool { return s.TracksMotion() })
+	waitFor(t, "the caller's callback", func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		for _, m := range seen {
+			if m == 1002 {
+				return true
+			}
+		}
+		return false
+	})
 }

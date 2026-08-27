@@ -87,15 +87,16 @@ func build(t *testing.T) string {
 // is what a terminal would display.
 func run(t *testing.T, cfg string, w, h int) (*session.Session, func() *screen) {
 	t.Helper()
-	return runWith(t, cfg, w, h, nil)
+	return runWith(t, cfg, w, h, vt.Callbacks{})
 }
 
-// runWith hosts the application and lets the caller configure the emulator
-// before a byte reaches it, which is the only point at which that is safe.
-func runWith(t *testing.T, cfg string, w, h int, configure func(vt.Terminal)) (*session.Session, func() *screen) {
+// runWith hosts the application with extra emulator callbacks, which have to
+// be given at construction: they are installed before the first byte arrives,
+// and setting them afterwards would replace the session's own.
+func runWith(t *testing.T, cfg string, w, h int, cb vt.Callbacks) (*session.Session, func() *screen) {
 	t.Helper()
 	s, err := session.Start(session.Spec{
-		Configure: configure,
+		Callbacks: cb,
 		ID:        "claudecontrol",
 		Argv:      []string{build(t), "-config", cfg},
 		Dir:       ".",

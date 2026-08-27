@@ -431,8 +431,8 @@ resize. `alt`-drag a pane to move it: dropping it on the middle of another
 **swaps** the two, dropping it on a side **inserts** it there. Everything else
 goes to the guest, translated into the coordinates it expects.
 
-**Right-click** opens a small menu on the pane: paste, new session, close,
-zoom, move. It exists because turning mouse reporting on takes the right button
+**Right-click** opens a small menu on the pane: copy, paste, new session,
+close, zoom, move. It exists because turning mouse reporting on takes the right button
 away from the terminal, and with it the menu the terminal would have shown —
 having taken it, the application owes one back.
 
@@ -454,6 +454,24 @@ Failing that, the terminal itself is asked over OSC 52, which many terminals
 refuse because it would let any program read what you copied. If neither works
 the bar says so and names the remedy, rather than a paste that quietly does
 nothing.
+
+## Selecting and copying
+
+Drag across a pane to select, right-click and choose **copy**. A guest that
+asked only for button events — Claude Code does — cannot see a drag at all: it
+arrives as a press and a release with nothing in between. The gesture is
+therefore free, and it is the one people expect to select text with.
+
+The press is still forwarded, so a click reaches the guest as a click; only
+once the pointer moves does the drag become a selection, and the guest is sent
+a release so it is not left believing the button is still down. A guest that
+**does** follow the pointer — an editor with the mouse enabled — keeps its
+drag, since it is doing something with it.
+
+Copying goes through the same two paths as pasting, in the same order: a
+helper program if one is installed, and otherwise the terminal itself over
+OSC 52. Writing is the half terminals are likelier to allow, since handing
+text to the clipboard gives nothing away.
 
 ## Scrolling
 

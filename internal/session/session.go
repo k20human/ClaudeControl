@@ -14,6 +14,7 @@ import (
 	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
 )
@@ -49,12 +50,12 @@ type Spec struct {
 	// emulator with nothing to trigger a repaint.
 	OnUpdate func()
 
-	// Configure runs against the emulator after it is built and before
-	// anything is written to it. That is the only safe moment: several of the
-	// emulator's setters — SetCallbacks among them — are promoted from the
-	// unguarded type, so reaching for them once the pump is running is a race
-	// whatever the caller does.
-	Configure func(vt.Terminal)
+	// Callbacks are added to the ones the session installs for itself. They
+	// are given here rather than set afterwards because SetCallbacks replaces
+	// the whole set — a caller installing its own would silently drop the
+	// session's — and because it is promoted from the unguarded type, so it
+	// can only be called before the pump starts.
+	Callbacks vt.Callbacks
 }
 
 // Session is a hosted process plus the emulator that interprets its output.
@@ -71,6 +72,12 @@ type Session struct {
 	cmd  *exec.Cmd
 
 	drainDone chan struct{}
+
+	// motion records whether the guest asked to be told about the pointer
+	// moving, which decides who a drag belongs to. Guarded because the
+	// emulator reports mode changes from the pump's goroutine.
+	motionMu sync.RWMutex
+	motion   bool
 
 	// termMu makes a resize atomic against the output pump. Resizing has to
 	// read the screen and write it back (see repaintLocked), and the pump
@@ -116,9 +123,22 @@ func Start(sp Spec) (*Session, error) {
 		drainDone: make(chan struct{}),
 	}
 
-	if sp.Configure != nil {
-		sp.Configure(s.Term)
+	// Installed before the pump starts, which is the only safe moment.
+	cb := sp.Callbacks
+	theirEnable, theirDisable := cb.EnableMode, cb.DisableMode
+	cb.EnableMode = func(m ansi.Mode) {
+		s.noteMode(m, true)
+		if theirEnable != nil {
+			theirEnable(m)
+		}
 	}
+	cb.DisableMode = func(m ansi.Mode) {
+		s.noteMode(m, false)
+		if theirDisable != nil {
+			theirDisable(m)
+		}
+	}
+	s.Term.SetCallbacks(cb)
 
 	// Process output feeds the emulator.
 	go s.pumpOutput()
@@ -289,6 +309,71 @@ func (s *Session) DrawScrolled(scr uv.Screen, area uv.Rectangle, offset int) {
 			scr.SetCell(area.Min.X+col, area.Min.Y+row, &copied)
 		}
 	}
+}
+
+// noteMode records the mouse modes that matter to us.
+//
+// Only the two that report the pointer moving. A guest that has asked for them
+// is doing something with a drag; one that has not cannot see a drag at all,
+// which is what makes it safe to use the gesture for something else.
+func (s *Session) noteMode(m ansi.Mode, on bool) {
+	switch m.Mode() {
+	case ansi.MouseCellMotionMode.Mode(), ansi.MouseAllMotionMode.Mode():
+	default:
+		return
+	}
+	s.motionMu.Lock()
+	s.motion = on
+	s.motionMu.Unlock()
+}
+
+// TracksMotion reports whether the guest asked to be told about the pointer
+// moving. It decides who a drag belongs to.
+//
+// Claude Code asks for button events and nothing more, so a drag inside its
+// pane reaches it as a press and a release with nothing in between — it cannot
+// see the drag, and the gesture is free for selecting text. A full-screen
+// editor with the mouse enabled does ask, and keeps its drag.
+func (s *Session) TracksMotion() bool {
+	s.motionMu.RLock()
+	defer s.motionMu.RUnlock()
+	return s.motion
+}
+
+// LineText reads part of one line of the whole output, history and screen
+// together, as text.
+//
+// Under the lock for the same reason the scrolled drawing is: these accessors
+// hand back a pointer into the live buffer, and the pump writes to that buffer
+// under the same lock.
+func (s *Session) LineText(line, from, to int) string {
+	s.termMu.Lock()
+	defer s.termMu.Unlock()
+
+	history := s.Term.ScrollbackLen()
+	width := s.Term.Bounds().Dx()
+	if to >= width {
+		to = width - 1
+	}
+	if from < 0 {
+		from = 0
+	}
+
+	var b strings.Builder
+	for col := from; col <= to; col++ {
+		var cell *uv.Cell
+		if line < history {
+			cell = s.Term.ScrollbackCellAt(col, line)
+		} else {
+			cell = s.Term.CellAt(col, line-history)
+		}
+		if cell == nil || cell.Content == "" {
+			b.WriteByte(' ')
+			continue
+		}
+		b.WriteString(cell.Content)
+	}
+	return b.String()
 }
 
 // SendKey encodes a key the way this guest asked for it.

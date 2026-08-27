@@ -54,6 +54,33 @@ func Read(timeout time.Duration) (string, error) {
 	return "", ErrNoHelper
 }
 
+// writers are the same programs, asked to take text rather than give it.
+var writers = [][]string{
+	{"wl-copy"},
+	{"xclip", "-selection", "clipboard"},
+	{"xsel", "--clipboard", "--input"},
+}
+
+// Write puts text on the clipboard through a helper program.
+func Write(text string, timeout time.Duration) error {
+	for i, w := range writers {
+		if _, err := exec.LookPath(w[0]); err != nil {
+			continue
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		cmd := exec.CommandContext(ctx, w[0], w[1:]...)
+		cmd.Stdin = strings.NewReader(text)
+		err := cmd.Run()
+		cancel()
+		if err != nil {
+			return fmt.Errorf("clipboard: %s: %w", w[0], err)
+		}
+		_ = i
+		return nil
+	}
+	return ErrNoHelper
+}
+
 // ErrNoHelper says no clipboard program is installed. It is a distinct error
 // because the remedy is distinct: one command to install one.
 var ErrNoHelper = fmt.Errorf(

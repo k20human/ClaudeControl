@@ -14,21 +14,15 @@ import (
 // running session: SetCallbacks is promoted from the unguarded emulator, so
 // calling it while the pump is writing is a race — which the detector duly
 // found when this was first written the obvious way.
-func cursorWatch() (func(vt.Terminal), func() int) {
+func cursorWatch() (vt.Callbacks, func() int) {
 	var mu sync.Mutex
 	n := 0
-	install := func(term vt.Terminal) {
-		e, ok := term.(*vt.SafeEmulator)
-		if !ok {
-			return
-		}
-		e.SetCallbacks(vt.Callbacks{CursorVisibility: func(bool) {
-			mu.Lock()
-			n++
-			mu.Unlock()
-		}})
-	}
-	return install, func() int {
+	cb := vt.Callbacks{CursorVisibility: func(bool) {
+		mu.Lock()
+		n++
+		mu.Unlock()
+	}}
+	return cb, func() int {
 		mu.Lock()
 		defer mu.Unlock()
 		return n
@@ -42,8 +36,8 @@ func cursorWatch() (func(vt.Terminal), func() int) {
 // the cursor changes between those frames, so nothing should be sent.
 func TestAnAnimatedPaneDoesNotFlickerTheCursor(t *testing.T) {
 	const W, H = 80, 16
-	install, count := cursorWatch()
-	s, snap := runWith(t, "testdata/holo-term.yaml", W, H, install)
+	cb, count := cursorWatch()
+	s, snap := runWith(t, "testdata/holo-term.yaml", W, H, cb)
 
 	waitForRow(t, snap, paneRow0, "L>")
 	s.SendText("Z")
