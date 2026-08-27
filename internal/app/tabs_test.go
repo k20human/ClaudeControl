@@ -260,3 +260,63 @@ func TestThePaneTitleCarriesTheSessionsMark(t *testing.T) {
 		t.Errorf("the mark replaced the name instead of joining it: %q", row)
 	}
 }
+
+// Tabs are opened and closed as you work, with the two controls in the strip.
+func TestTheStripOpensAndClosesTabs(t *testing.T) {
+	const W, H = 90, 14
+	s, snap := run(t, tabsConfig(t), W, H)
+	waitForAnywhere(t, snap, "ALPHA-HERE")
+
+	// Focus first: the first click on an unfocused pane takes the focus and
+	// goes no further.
+	click(t, s, W-10, 5)
+	before := snap().row(0)
+
+	plus := columnOf(before, "+")
+	if plus < 0 {
+		t.Fatalf("no + in the strip: %q", before)
+	}
+	click(t, s, plus, 0)
+
+	// A tab arrives. It is named after whatever it holds — a session takes
+	// the name of the directory it runs in — so what is checked is that the
+	// strip grew and that the two that were there are still there.
+	var grown string
+	deadline := time.Now().Add(4 * time.Second)
+	for time.Now().Before(deadline) {
+		grown = snap().row(0)
+		if len(grown) > len(before) && strings.Contains(grown, "×") {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if len(grown) <= len(before) {
+		t.Fatalf("the strip did not grow: %q then %q", before, grown)
+	}
+	for _, keep := range []string{"alpha", "beta"} {
+		if !strings.Contains(grown, keep) {
+			t.Errorf("opening a tab lost %q: %q", keep, grown)
+		}
+	}
+
+	// The cross is on the tab in front of you and no other, so a stray click
+	// cannot close something you were not reading.
+	cross := columnOf(grown, "×")
+	if cross < 0 {
+		t.Fatalf("no × in the strip: %q", grown)
+	}
+	click(t, s, cross, 0)
+
+	deadline = time.Now().Add(4 * time.Second)
+	for time.Now().Before(deadline) {
+		if row := snap().row(0); len(row) <= len(before) {
+			// And what remains is what was there first.
+			if !strings.Contains(row, "alpha") || !strings.Contains(row, "beta") {
+				t.Errorf("closing a tab took the others with it: %q", row)
+			}
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Errorf("the strip did not shrink after closing: %q", snap().row(0))
+}

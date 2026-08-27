@@ -339,10 +339,22 @@ The strip **replaces the pane title** rather than adding a row — the point of
 tabs is that space is short. A label that does not fit is dropped whole and
 counted (`+2`), so the strip never lies about how many tabs there are.
 
-`alt+;` and `alt+'` move through them, and clicking a label picks one directly
+Tabs are opened and closed as you work, not only declared here. `alt+a` opens
+one — a session, the same thing a new pane holds — and `alt+x` closes the one
+in front of you, falling through to closing the pane when it was the last tab.
+The strip carries a `+` at its right, reserved before anything else is laid
+out so a full strip still lets you open a tab, and a `×` on the tab you are
+looking at and no other: it saves the width of one on every tab, and a stray
+click cannot close something you were not reading.
+
+What closing does to whatever the tab held is the module's own business, and
+the same distinction closing a pane makes: a Claude session **detaches and
+keeps running**, reachable from `alt+space`, while a shell ends.
+
+`alt+;` and `alt+'` move between tabs, and clicking a label picks one directly
 — though a click on an unfocused pane takes the focus and goes no further, so
-from another pane it takes two. A tab holding a Claude session waiting for you
-is marked with a dot, which is the whole reason a hidden tab is bearable.
+from another pane it takes two. A tab is named after what it holds, numbered
+when two would read alike.
 
 ## `sessions`
 
@@ -389,7 +401,8 @@ actually working** — an idle window stays idle.
 |---|---|
 | `alt+h` `alt+j` `alt+k` `alt+l` | move the focus left, down, up, right |
 | ``alt+` `` | previous pane |
-| `alt+n` / `alt+x` | new session / close pane |
+| `alt+n` / `alt+x` | new pane / close the tab, or the pane |
+| `alt+a` | open a tab in this pane |
 | `alt+z` | zoom the focused pane, and back |
 | `alt+m` / `alt+s` | flip a split / reset every split to equal shares |
 | `alt+r` | pick this pane up, then click where it lands |

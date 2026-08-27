@@ -256,20 +256,94 @@ func TestALabelThatDoesNotFitIsDroppedAndCounted(t *testing.T) {
 	}
 }
 
-// One tab is a pane with a wasted row and none is a pane with nothing in it.
-func TestAPaneOfTabsWantsAtLeastTwo(t *testing.T) {
-	for _, cfg := range []map[string]any{
-		{},
-		{"tabs": []any{map[string]any{"module": "term"}}},
-	} {
-		if _, err := module.New("tabs", cfg); err == nil {
-			t.Errorf("accepted %v", cfg)
-		}
+// A pane with nothing in it is a configuration mistake worth naming. One tab
+// is not: tabs are opened and closed as you work, and a pane may well be down
+// to its last.
+func TestAPaneOfTabsWantsSomethingInIt(t *testing.T) {
+	if _, err := module.New("tabs", map[string]any{}); err == nil {
+		t.Error("a pane with no tabs was accepted")
+	}
+	if _, err := module.New("tabs", map[string]any{"tabs": []any{
+		map[string]any{"module": "term", "options": shell("cat")},
+	}}); err != nil {
+		t.Errorf("a single tab was refused: %v", err)
 	}
 	if _, err := module.New("tabs", map[string]any{"tabs": []any{
 		map[string]any{"title": "x"},
 		map[string]any{"module": "term"},
 	}}); err == nil || !strings.Contains(err.Error(), "module") {
 		t.Errorf("a tab with no module gave %v", err)
+	}
+}
+
+// Tabs are opened and closed as you work. Opening one shows it, because a tab
+// you then have to go and find would be a strange kind of opening.
+func TestATabCanBeOpenedAndClosed(t *testing.T) {
+	m := build(t, two(), module.Context{Wake: func() {}})
+	counter, ok := m.(interface {
+		Add(string, map[string]any) error
+		CloseTab(int) error
+		Count() int
+		ActiveIndex() int
+	})
+	if !ok {
+		t.Fatalf("tabs is %T", m)
+	}
+
+	if err := counter.Add("term", map[string]any{"cmd": []any{"sh", "-c", "printf THIRD; cat"}}); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	if counter.Count() != 3 {
+		t.Fatalf("%d tabs after adding one", counter.Count())
+	}
+	if counter.ActiveIndex() != 2 {
+		t.Errorf("the new tab is not the one on screen: index %d", counter.ActiveIndex())
+	}
+	waitFor(t, "the new tab", func() bool {
+		return strings.Contains(paint(t, m, 50, 10).text(), "THIRD")
+	})
+
+	if err := counter.CloseTab(2); err != nil {
+		t.Fatalf("CloseTab: %v", err)
+	}
+	if counter.Count() != 2 {
+		t.Errorf("%d tabs after closing one", counter.Count())
+	}
+	// Its neighbour is shown rather than nothing at all.
+	if counter.ActiveIndex() != 1 {
+		t.Errorf("after closing the last tab the one on screen is %d", counter.ActiveIndex())
+	}
+}
+
+// Three tabs all reading "claude" would be three tabs you cannot tell apart.
+func TestTabsOpenedWithTheSameNameAreNumbered(t *testing.T) {
+	m := build(t, two(), module.Context{Wake: func() {}})
+	adder := m.(interface {
+		Add(string, map[string]any) error
+	})
+	for i := 0; i < 2; i++ {
+		if err := adder.Add("term", map[string]any{"cmd": []any{"sh", "-c", "cat"}}); err != nil {
+			t.Fatalf("Add: %v", err)
+		}
+	}
+	row := paint(t, m, 60, 10).row(0)
+	if !strings.Contains(row, "term") || !strings.Contains(row, "term 2") {
+		t.Errorf("the strip does not tell them apart: %q", row)
+	}
+}
+
+// The pane would be left with nothing to draw. Closing the pane is a different
+// gesture, and the application already has one.
+func TestTheLastTabIsNotClosed(t *testing.T) {
+	m := build(t, map[string]any{"tabs": []any{
+		map[string]any{"title": "only", "module": "term", "options": shell("cat")},
+	}}, module.Context{Wake: func() {}})
+	closer := m.(interface{ CloseTab(int) error })
+	err := closer.CloseTab(0)
+	if err == nil {
+		t.Fatal("the last tab was closed")
+	}
+	if !strings.Contains(err.Error(), "pane") {
+		t.Errorf("the refusal does not say what to do instead: %v", err)
 	}
 }

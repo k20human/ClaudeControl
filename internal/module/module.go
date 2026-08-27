@@ -29,6 +29,11 @@ type Context struct {
 
 	// Wake asks the application to redraw. It never blocks and may coalesce.
 	Wake func()
+
+	// Status puts a sentence in the application's bar. It is how a module
+	// answers something it was asked to do but could not — closing the last
+	// tab of a pane, say. Nil when nothing is listening, so callers check.
+	Status func(string)
 }
 
 // Module is one pane's content.

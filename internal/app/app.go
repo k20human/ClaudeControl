@@ -204,6 +204,7 @@ func (a *App) moduleContext(id layout.PaneID) module.Context {
 		Bus:        a.bus,
 		HookSocket: socket,
 		Binary:     a.binary,
+		Status:     func(msg string) { a.setStatus("%s", msg) },
 		Wake:       a.Wake,
 	}
 }

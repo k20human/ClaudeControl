@@ -39,6 +39,12 @@ func (m *Module) drawStrip(scr uv.Screen, area uv.Rectangle) {
 	defer m.mu.Unlock()
 
 	now := time.Now()
+	// The + is reserved before anything else is laid out, so a strip that is
+	// full still lets you open a tab. A button that disappears when you need
+	// it is not a button.
+	plusW := ansi.StringWidth(plusLabel)
+	limit := area.Max.X - plusW
+
 	x, hidden := area.Min.X, 0
 	for i, t := range m.tabs {
 		label := " " + t.title + " "
@@ -46,9 +52,15 @@ func (m *Module) drawStrip(scr uv.Screen, area uv.Rectangle) {
 			// The same mark as everywhere else: one meaning per shape.
 			label = " " + indicator.Glyph(t.state, now) + " " + t.title + " "
 		}
+		// The cross is on the tab you are looking at and no other. It saves
+		// the width of one on every tab, and it means a stray click cannot
+		// close something you were not even reading.
+		if i == m.active && len(m.tabs) > 1 {
+			label += closeLabel + " "
+		}
 		w := ansi.StringWidth(label)
-		if x+w > area.Max.X {
-			t.x, t.w = 0, 0
+		if x+w > limit {
+			t.x, t.w, t.closeX = 0, 0, 0
 			hidden++
 			continue
 		}
@@ -66,16 +78,22 @@ func (m *Module) drawStrip(scr uv.Screen, area uv.Rectangle) {
 		// Recorded pane-local, because that is how the pointer arrives: the
 		// application translates a click into the pane's own coordinates
 		// before the module ever sees it.
-		t.x, t.w = x-area.Min.X, w
+		t.x, t.w, t.closeX = x-area.Min.X, w, 0
+		if i == m.active && len(m.tabs) > 1 {
+			t.closeX = x - area.Min.X + w - 1 - ansi.StringWidth(closeLabel)
+		}
 		x += w
 	}
 
 	if hidden > 0 {
-		mark := "+" + itoa(hidden)
-		if at := area.Max.X - ansi.StringWidth(mark); at > x {
+		mark := "…" + itoa(hidden)
+		if at := limit - ansi.StringWidth(mark); at > x {
 			render.Text(scr, at, area.Min.Y, mark, fgWaiting, bgStrip)
 		}
 	}
+
+	m.plusX = limit - area.Min.X
+	render.Text(scr, limit, area.Min.Y, plusLabel, fgIdle, bgStrip)
 }
 
 func itoa(n int) string {
@@ -90,16 +108,33 @@ func itoa(n int) string {
 	return string(b)
 }
 
-// tabAt is the tab whose label covers a pane-local point on the strip, or -1.
-func (m *Module) tabAt(x int) int {
+// hitKind is what a point on the strip means.
+type hitKind int
+
+const (
+	hitNone hitKind = iota
+	hitTab
+	hitClose
+	hitPlus
+)
+
+// stripAt reads a pane-local point on the strip. The cross is tested before
+// the tab it sits in, or you could never reach it.
+func (m *Module) stripAt(x int) (hitKind, int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.plusX > 0 && x >= m.plusX && x < m.plusX+ansi.StringWidth(plusLabel) {
+		return hitPlus, 0
+	}
 	for i, t := range m.tabs {
+		if t.closeX > 0 && x >= t.closeX && x < t.closeX+ansi.StringWidth(closeLabel) {
+			return hitClose, i
+		}
 		if t.w > 0 && x >= t.x && x < t.x+t.w {
-			return i
+			return hitTab, i
 		}
 	}
-	return -1
+	return hitNone, 0
 }
 
 // Mouse switches tabs on the strip, and forwards everything else.
@@ -110,7 +145,16 @@ func (m *Module) Mouse(ev uv.MouseEvent) {
 	mouse := ev.Mouse()
 	if mouse.Y < stripRows {
 		if _, isClick := ev.(uv.MouseClickEvent); isClick {
-			if i := m.tabAt(mouse.X); i >= 0 {
+			switch kind, i := m.stripAt(mouse.X); kind {
+			case hitPlus:
+				if err := m.Add(NewTabModule, nil); err != nil && m.ctx.Status != nil {
+					m.ctx.Status(err.Error())
+				}
+			case hitClose:
+				if err := m.CloseTab(i); err != nil && m.ctx.Status != nil {
+					m.ctx.Status(err.Error())
+				}
+			case hitTab:
 				m.Select(i)
 			}
 		}

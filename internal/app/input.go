@@ -30,7 +30,8 @@ var bindings = []binding{
 	{[]string{"alt+l"}, "alt+l", "move focus right", func(a *App) { a.focusDirection(Right) }},
 	{[]string{"alt+`"}, "alt+`", "previous pane", func(a *App) { a.setFocus(a.prev) }},
 	{[]string{"alt+n"}, "alt+n", "new session", func(a *App) { _ = a.newPane(layout.Horizontal) }},
-	{[]string{"alt+x"}, "alt+x", "close pane", func(a *App) { _ = a.closePane(a.focus) }},
+	{[]string{"alt+x"}, "alt+x", "close tab, or the pane", func(a *App) { a.closeFocused() }},
+	{[]string{"alt+a"}, "alt+a", "add a tab", func(a *App) { a.addTab() }},
 	{[]string{"alt+z"}, "alt+z", "zoom / restore", func(a *App) { a.toggleZoom() }},
 	{[]string{"alt+m"}, "alt+m", "flip the split: side by side <-> stacked", func(a *App) { a.rotateFocusedSplit() }},
 	{[]string{"alt+s"}, "alt+s", "reset every split to equal shares", func(a *App) { a.evenOutSplits() }},
@@ -50,6 +51,50 @@ var bindings = []binding{
 	{[]string{"alt+'"}, "alt+'", "next tab", func(a *App) { a.cycleTab(1) }},
 	{[]string{"alt+g"}, "alt+g", "this panel", func(a *App) { a.overlay = overlayHelp }},
 	{[]string{"alt+q"}, "alt+q", "quit", func(a *App) { a.overlay = overlayQuit }},
+}
+
+// closeFocused closes the tab on screen, or the pane when there is no tab to
+// close.
+//
+// The same key for both, because it is the same intent: get rid of what I am
+// looking at. A terminal closes its window with the last tab, and this is that
+// gesture — the pane goes when its last tab would have.
+func (a *App) closeFocused() {
+	m, ok := a.modules[a.focus]
+	if !ok {
+		return
+	}
+	t, ok := m.(interface {
+		CloseTab(int) error
+		ActiveIndex() int
+		Count() int
+	})
+	if !ok || t.Count() <= 1 {
+		_ = a.closePane(a.focus)
+		return
+	}
+	if err := t.CloseTab(t.ActiveIndex()); err != nil {
+		a.setStatus("%s", err)
+	}
+}
+
+// addTab opens one in the focused pane, if that pane is a pane of tabs.
+func (a *App) addTab() {
+	m, ok := a.modules[a.focus]
+	if !ok {
+		return
+	}
+	t, ok := m.(interface {
+		Add(string, map[string]any) error
+	})
+	if !ok {
+		a.setStatus("this pane has no tabs — alt+n opens a new pane")
+		return
+	}
+	// The same thing a new pane holds: a session is what you open a tab for.
+	if err := t.Add("claude", nil); err != nil {
+		a.setStatus("%s", err)
+	}
 }
 
 // cycleTab moves through the tabs of the focused pane, if it has any.

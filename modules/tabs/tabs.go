@@ -41,7 +41,8 @@ type tab struct {
 
 	// x and w are where its label was last drawn, so a click lands on what
 	// was seen rather than on a table that could have drifted from it.
-	x, w int
+	// closeX is where its cross was drawn, or zero if it had none.
+	x, w, closeX int
 
 	// state is what the session behind this tab is doing, so a tab you are not
 	// looking at can still say so. Without it, a hidden tab is a session you
@@ -61,7 +62,16 @@ type Module struct {
 	active int
 
 	cols, rows int
+	// plusX is where the + was last drawn, pane-local.
+	plusX int
 }
+
+// The two controls in the strip. Kept short: every cell they take is a cell a
+// tab label does not have.
+const (
+	closeLabel = "×"
+	plusLabel  = " + "
+)
 
 // New builds the module from its configuration.
 func New(cfg map[string]any) (module.Module, error) {
@@ -87,12 +97,135 @@ func New(cfg map[string]any) (module.Module, error) {
 		}
 		m.tabs = append(m.tabs, &tab{title: title, mod: child})
 	}
-	if len(m.tabs) < 2 {
-		// One tab is a pane with a wasted row, and none is a pane with
-		// nothing in it. Either is a configuration mistake worth naming.
-		return nil, fmt.Errorf("tabs: %d tab configured; a pane of tabs wants at least two", len(m.tabs))
+	if len(m.tabs) == 0 {
+		// A pane with nothing in it. One is allowed, since tabs are added and
+		// closed as you work and a pane may well be down to its last.
+		return nil, fmt.Errorf("tabs: no %q configured", "tabs")
 	}
 	return m, nil
+}
+
+// NewTabModule is what the + button creates. A session, because that is what
+// you open a tab for; the same thing alt+n puts in a new pane.
+const NewTabModule = "claude"
+
+// Add builds a module and puts it in a new tab, which becomes the one on
+// screen — opening a tab you then have to go and find would be a strange kind
+// of opening.
+func (m *Module) Add(name string, opts map[string]any) error {
+	child, err := module.New(name, opts)
+	if err != nil {
+		return fmt.Errorf("tabs: %w", err)
+	}
+	if err := child.Init(m.ctx); err != nil {
+		_ = child.Close()
+		return fmt.Errorf("tabs: %s: %w", name, err)
+	}
+
+	m.mu.Lock()
+	title := m.uniqueTitleLocked(titleFor(child, name))
+	inner := m.rows - stripRows
+	if inner < 1 {
+		inner = 1
+	}
+	m.tabs = append(m.tabs, &tab{title: title, mod: child})
+	m.active = len(m.tabs) - 1
+	cols := m.cols
+	m.mu.Unlock()
+
+	// Resizing is what starts a hosted process, so its failure is the failure
+	// to open the tab and has to be said. The tab stays — it is there, it is
+	// simply empty — because removing it would leave nothing to explain.
+	if cols > 0 {
+		if err := child.Resize(cols, inner); err != nil && m.ctx.Status != nil {
+			m.ctx.Status(title + ": " + err.Error())
+		}
+	}
+	if m.ctx.Wake != nil {
+		m.ctx.Wake()
+	}
+	return nil
+}
+
+// titleFor asks the module what it would like to be called, and falls back on
+// the name it was registered under.
+func titleFor(child module.Module, name string) string {
+	if t, ok := child.(interface{ Title() (string, bool) }); ok {
+		if title, want := t.Title(); want && title != "" {
+			return title
+		}
+	}
+	return name
+}
+
+// uniqueTitleLocked numbers a title that is already taken. Three tabs all
+// reading "claude" would be three tabs you cannot tell apart.
+func (m *Module) uniqueTitleLocked(want string) string {
+	taken := func(s string) bool {
+		for _, t := range m.tabs {
+			if t.title == s {
+				return true
+			}
+		}
+		return false
+	}
+	if !taken(want) {
+		return want
+	}
+	for n := 2; ; n++ {
+		try := fmt.Sprintf("%s %d", want, n)
+		if !taken(try) {
+			return try
+		}
+	}
+}
+
+// CloseTab closes one and shows its neighbour.
+//
+// What closing does to whatever the tab held is the module's own business: a
+// Claude session detaches and keeps running, reachable from the sessions list,
+// while a shell ends. That is the same distinction closing a pane makes, and
+// it would be strange for a tab to make a different one.
+func (m *Module) CloseTab(i int) error {
+	m.mu.Lock()
+	if i < 0 || i >= len(m.tabs) {
+		m.mu.Unlock()
+		return fmt.Errorf("tabs: no tab %d", i)
+	}
+	if len(m.tabs) == 1 {
+		m.mu.Unlock()
+		// The pane would be left with nothing to draw. Closing the pane is a
+		// different gesture, and the application already has one.
+		return fmt.Errorf("tabs: this is the last tab; close the pane instead")
+	}
+	doomed := m.tabs[i]
+	m.tabs = append(m.tabs[:i:i], m.tabs[i+1:]...)
+	if m.active >= len(m.tabs) {
+		m.active = len(m.tabs) - 1
+	} else if m.active > i {
+		m.active--
+	}
+	m.mu.Unlock()
+
+	err := doomed.mod.Close()
+	if m.ctx.Wake != nil {
+		m.ctx.Wake()
+	}
+	return err
+}
+
+// Count is how many tabs there are.
+func (m *Module) Count() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.tabs)
+}
+
+// Active index, for whatever needs to close the one on screen.
+func (m *Module) ActiveIndex() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.active
 }
 
 // Init starts every module, not only the one that will be shown first.
