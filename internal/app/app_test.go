@@ -61,6 +61,10 @@ func (b *screen) row(y int) string {
 }
 
 // build compiles the command once per test binary run.
+// sender is what the mouse helpers need of a hosted application: somewhere to
+// put the bytes a terminal would have sent.
+type sender interface{ SendText(string) }
+
 // paneRow0 is the screen row where a pane's own content starts. The row above
 // it carries the pane title.
 const paneRow0 = 1

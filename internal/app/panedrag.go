@@ -80,7 +80,7 @@ func (a *App) beginPaneDrag(src layout.PaneID) {
 		return
 	}
 	if len(a.rects) < 2 {
-		a.status = "there is nowhere to move the only pane"
+		a.setStatus("there is nowhere to move the only pane")
 		return
 	}
 	a.paneDrag = &paneDragState{src: src, target: src, side: layout.SideSwap}
@@ -111,7 +111,7 @@ func (a *App) finishPaneDrag() {
 	}
 	root, err := layout.Move(a.root, d.src, d.target, d.side)
 	if err != nil {
-		a.status = err.Error()
+		a.setStatus("%s", err.Error())
 		return
 	}
 	a.root = root

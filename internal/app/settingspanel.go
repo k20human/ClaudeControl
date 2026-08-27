@@ -25,12 +25,12 @@ func (a *App) toggleSettingsPanel() {
 	}
 	p, ok := m.(module.Provider)
 	if !ok {
-		a.status = "this pane has nothing to configure"
+		a.setStatus("this pane has nothing to configure")
 		return
 	}
 	items := p.Settings()
 	if len(items) == 0 {
-		a.status = "this pane has nothing to configure"
+		a.setStatus("this pane has nothing to configure")
 		return
 	}
 	a.settingsPanel = panel.NewPanel(items)
@@ -129,7 +129,7 @@ func (a *App) moduleName(id layout.PaneID) string {
 // path is taken only once the layout really did change, and then it says so.
 func (a *App) saveSettings() error {
 	if a.cfgPath == "" {
-		a.status = "no configuration file to write to"
+		a.setStatus("no configuration file to write to")
 		return nil
 	}
 
@@ -141,23 +141,23 @@ func (a *App) saveSettings() error {
 			}
 		}
 		if len(values) == 0 {
-			a.status = "nothing to save"
+			a.setStatus("nothing to save")
 			return nil
 		}
 		if err := stg.WritePaneOptions(a.cfgPath, a.paneOrdinal(a.focus), values); err != nil {
-			a.status = err.Error()
+			a.setStatus("%s", err.Error())
 			return err
 		}
-		a.status = "settings saved to " + a.cfgPath
+		a.setStatus("settings saved to %s", a.cfgPath)
 		return nil
 	}
 
 	if err := stg.ReplaceLayout(a.cfgPath, a.layoutSpec()); err != nil {
-		a.status = err.Error()
+		a.setStatus("%s", err.Error())
 		return err
 	}
 	a.layoutChanged = false
-	a.status = "layout and settings saved — comments inside the layout block were replaced"
+	a.setStatus("layout and settings saved — comments inside the layout block were replaced")
 	return nil
 }
 

@@ -328,6 +328,9 @@ func (m *Module) Draw(scr uv.Screen, area uv.Rectangle) {
 	if split {
 		m.readout.draw(scr, column, now)
 	}
+	// Across the whole pane rather than inside the column: the corner is the
+	// corner, column or no column.
+	m.readout.drawMaxim(scr, area)
 	m.wake()
 }
 

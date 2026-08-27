@@ -299,6 +299,13 @@ panel has one rule: it must never be mistakable for a statement about what the
 machine is doing. Each line is drawn from the pool of the state the sessions are
 really in, and none cites a figure or names an operation.
 
+In the bottom corner sits a second line, on a much slower clock and unrelated
+to the state. Where the ambient line reports a disposition and could in
+principle be wrong about it, this one asserts nothing at all — no activity, no
+figure, no state — which is what makes it safe to show whatever is happening.
+It is dropped whole on a narrow pane: an aphorism cut in half is not a shorter
+aphorism.
+
 The column disappears below 44 columns of pane and the sphere takes the whole
 width. The five numbers above are also sliders in the settings menu.
 
@@ -332,6 +339,30 @@ moving to a pane can never trigger something inside it. Drag a divider to
 resize. `alt`-drag a pane to move it: dropping it on the middle of another
 **swaps** the two, dropping it on a side **inserts** it there. Everything else
 goes to the guest, translated into the coordinates it expects.
+
+**Right-click** opens a small menu on the pane: paste, new session, close,
+zoom, move. It exists because turning mouse reporting on takes the right button
+away from the terminal, and with it the menu the terminal would have shown —
+having taken it, the application owes one back.
+
+## Pasting
+
+`ctrl+shift+v` works and always has: the terminal sends the clipboard as a
+bracketed paste, which is forwarded whole to the focused pane and never scanned
+for shortcuts.
+
+**Right-click → paste** needs a way to read the clipboard, and a terminal
+application has none of its own. A helper is asked first — install one and it
+simply works:
+
+```sh
+sudo apt install wl-clipboard      # Wayland; xclip or xsel under X11
+```
+
+Failing that, the terminal itself is asked over OSC 52, which many terminals
+refuse because it would let any program read what you copied. If neither works
+the bar says so and names the remedy, rather than a paste that quietly does
+nothing.
 
 Every `alt+` combination above was checked against the Claude Code binary, and
 none of them is one Claude Code consumes.

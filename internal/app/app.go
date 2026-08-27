@@ -78,10 +78,23 @@ type App struct {
 	// each pane is called there, since the tree itself only holds ids.
 	cfgPath     string
 	moduleNames map[layout.PaneID]string
-	status      string
+
+	// status is a sentence for the bar, and statusAt when it was said. It is
+	// how the application answers something it was asked to do but could not.
+	status   string
+	statusAt time.Time
 
 	palette  *paletteState
 	paneDrag *paneDragState
+
+	// menu is the open context menu, if any. It exists because enabling mouse
+	// reporting takes the right button away from the terminal, and with it the
+	// menu the terminal would otherwise have shown.
+	menu *menuState
+
+	// clipboardAsked is when the terminal was last asked for the clipboard
+	// over OSC 52, so its silence can be reported rather than waited on.
+	clipboardAsked time.Time
 
 	// layoutChanged records whether the arrangement differs from the file.
 	// Saving takes the narrow path while it is false, which is what keeps the
@@ -368,6 +381,7 @@ func (a *App) relayout() {
 // at all. Blanking the screen on every frame would therefore erase panes that
 // have simply not written anything since the last frame.
 func (a *App) draw() {
+	a.clipboardTimedOut()
 	if a.clearNext {
 		a.clearNext = false
 		for y := 0; y < a.area.H; y++ {
@@ -394,6 +408,7 @@ func (a *App) draw() {
 	a.drawSessionPanel(a.scr)
 	a.drawSettingsPanel(a.scr)
 	a.drawPaneDrag(a.scr)
+	a.drawMenu(a.scr)
 	a.drawPalette(a.scr)
 	a.drawOverlay(a.scr)
 	a.drawCursor(a.scr)
@@ -403,7 +418,8 @@ func (a *App) draw() {
 // and whether it belongs anywhere at all. A panel covers the panes, so while
 // one is open the cursor has no business being shown.
 func (a *App) cursorTarget() (x, y int, visible bool) {
-	if a.overlay != overlayNone || a.sessionPanel != nil || a.settingsPanel != nil || a.palette != nil {
+	if a.overlay != overlayNone || a.sessionPanel != nil || a.settingsPanel != nil ||
+		a.palette != nil || a.menu != nil {
 		return 0, 0, false
 	}
 	m, ok := a.modules[a.focus]
@@ -467,6 +483,12 @@ func (a *App) handle(ev uv.Event) {
 		a.resize(e.Width, e.Height)
 	case uv.KeyPressEvent:
 		a.handleKey(e)
+	case uv.ClipboardEvent:
+		// The terminal answered, so it does hand the clipboard over after all.
+		a.clipboardAsked = time.Time{}
+		a.status = ""
+		a.deliverPaste(e.Content)
+
 	case uv.PasteEvent:
 		// Pasted text is forwarded whole and never scanned for bindings.
 		if m, ok := a.modules[a.focus].(module.Inputter); ok {

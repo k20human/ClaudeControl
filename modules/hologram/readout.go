@@ -18,6 +18,7 @@ var (
 	fgFlavour = color.RGBA{R: 0x4d, G: 0xd0, B: 0xe1, A: 0xff}
 	fgStamp   = color.RGBA{R: 0x3d, G: 0x47, B: 0x58, A: 0xff}
 	fgEvent   = color.RGBA{R: 0x8a, G: 0x98, B: 0xad, A: 0xff}
+	fgMaxim   = color.RGBA{R: 0x39, G: 0x44, B: 0x57, A: 0xff}
 )
 
 const (
@@ -65,6 +66,30 @@ var flavours = map[string][]string{
 	},
 }
 
+// maxims are the second line, in the bottom corner.
+//
+// They are not the ambient line and are not chosen the same way. The ambient
+// line is bound to the state the sessions are in, and so could in principle be
+// wrong about it. These assert nothing at all — no activity, no figure, no
+// state — which is what makes them safe to show whatever is happening. A
+// disposition cannot be false the way a claim can.
+var maxims = []string{
+	"patterns before conclusions",
+	"the shape of it first",
+	"slower is often shorter",
+	"what is not said, also",
+	"every assumption has a cost",
+	"the simplest thing that is true",
+	"doubt is information",
+	"read it twice",
+	"the exception is the design",
+	"a measure beats an opinion",
+}
+
+// maximHold is deliberately much longer than flavourHold. Two lines that
+// changed together would read as one animation rather than two thoughts.
+const maximHold = 47 * time.Second
+
 // flavourHold is how long a line stays before another is drawn from the same
 // pool. A phrase that changed every second would read as noise.
 const flavourHold = 20 * time.Second
@@ -88,13 +113,31 @@ type readout struct {
 	state   string
 	flavour string
 	since   time.Time
-	rng     *rand.Rand
+
+	maxim      string
+	maximSince time.Time
+
+	rng *rand.Rand
 }
 
 func newReadout(seed int64) *readout {
 	r := &readout{rng: rand.New(rand.NewSource(seed))}
 	r.setState("idle", time.Time{})
+	r.setMaxim(time.Time{})
 	return r
+}
+
+// setMaxim draws a fresh line for the corner.
+func (r *readout) setMaxim(now time.Time) {
+	r.maxim = maxims[r.rng.Intn(len(maxims))]
+	r.maximSince = now
+}
+
+// Maxim is the corner line.
+func (r *readout) Maxim() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.maxim
 }
 
 // setState records the state and draws a fresh ambient line for it.
@@ -126,6 +169,31 @@ func (r *readout) Observe(state string, now time.Time) {
 	if state != r.state || now.Sub(r.since) >= flavourHold {
 		r.setState(state, now)
 	}
+	// On its own clock, and never on a change of state: the corner line has
+	// nothing to do with what the sessions are doing.
+	//
+	// The first call starts that clock rather than expiring it. Built before
+	// there is any time to record, the line would otherwise be replaced the
+	// moment the pane is first drawn.
+	if r.maximSince.IsZero() {
+		r.maximSince = now
+	} else if now.Sub(r.maximSince) >= maximHold {
+		r.setMaxim(now)
+	}
+}
+
+// drawMaxim puts the corner line at the bottom right of the pane, dim enough
+// to be read only when you look for it.
+//
+// It is dropped entirely rather than shortened: an aphorism cut in half is not
+// a shorter aphorism.
+func (r *readout) drawMaxim(scr uv.Screen, area uv.Rectangle) {
+	line := r.Maxim()
+	w := ansi.StringWidth(line)
+	if area.Dy() < 3 || w+2 > area.Dx() {
+		return
+	}
+	render.Text(scr, area.Max.X-1-w, area.Max.Y-1, line, fgMaxim, bgPanel)
 }
 
 // Lines is the column's contents, newest event first.

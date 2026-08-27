@@ -6,6 +6,7 @@ import (
 	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 
 	"claudecontrol/internal/pool"
 	"claudecontrol/internal/session"
@@ -184,4 +185,114 @@ func contains(list []string, s string) bool {
 		}
 	}
 	return false
+}
+
+// The corner line asserts nothing — no activity, no figure, no state — which
+// is what makes it safe to show whatever is happening. A disposition cannot be
+// false the way a claim can.
+func TestTheCornerLineClaimsNothing(t *testing.T) {
+	for _, line := range maxims {
+		if strings.ContainsAny(line, "0123456789%") {
+			t.Errorf("%q cites a figure", line)
+		}
+		for _, word := range []string{"running", "thinking", "waiting", "analys", "scan", "process"} {
+			if strings.Contains(line, word) {
+				t.Errorf("%q says what the machine is doing", line)
+			}
+		}
+	}
+}
+
+// It has its own clock, and does not follow the state: two lines changing
+// together would read as one animation rather than two thoughts.
+func TestTheCornerLineIgnoresTheState(t *testing.T) {
+	r := newReadout(11)
+	now := time.Now()
+	first := r.Maxim()
+
+	for i, state := range []string{"working", "waiting", "exited", "idle"} {
+		r.Observe(state, now.Add(time.Duration(i)*time.Second))
+		if r.Maxim() != first {
+			t.Fatalf("the corner line changed with the state, at %q", state)
+		}
+	}
+
+	varied := false
+	for i := 1; i <= 40 && !varied; i++ {
+		r.Observe("idle", now.Add(time.Duration(i)*maximHold))
+		varied = r.Maxim() != first
+	}
+	if !varied {
+		t.Error("the corner line never changed over forty holds")
+	}
+}
+
+// A pane too narrow drops it whole: an aphorism cut in half is not a shorter
+// aphorism.
+func TestTheCornerLineIsDroppedRatherThanCut(t *testing.T) {
+	r := newReadout(13)
+	wide := newGrid(60, 10)
+	r.drawMaxim(wide, uv.Rect(0, 0, 60, 10))
+	if !strings.Contains(wide.text(), r.Maxim()) {
+		t.Errorf("the corner line is missing from a wide pane:\n%s", wide.text())
+	}
+	// The bottom row, right-aligned.
+	if got := strings.TrimRight(wide.row(9), " "); !strings.HasSuffix(got, r.Maxim()) {
+		t.Errorf("the corner line is not in the corner: %q", got)
+	}
+
+	narrow := newGrid(12, 10)
+	r.drawMaxim(narrow, uv.Rect(0, 0, 12, 10))
+	if strings.Contains(narrow.text(), "…") {
+		t.Errorf("a narrow pane cut it:\n%s", narrow.text())
+	}
+	if strings.TrimSpace(narrow.text()) != "" {
+		t.Errorf("a narrow pane drew something:\n%s", narrow.text())
+	}
+}
+
+// grid is a screen that remembers what was painted.
+type grid struct {
+	w, h  int
+	cells []uv.Cell
+}
+
+func newGrid(w, h int) *grid {
+	g := &grid{w: w, h: h, cells: make([]uv.Cell, w*h)}
+	for i := range g.cells {
+		g.cells[i] = uv.EmptyCell
+	}
+	return g
+}
+
+func (g *grid) Bounds() uv.Rectangle { return uv.Rect(0, 0, g.w, g.h) }
+func (g *grid) CellAt(x, y int) *uv.Cell {
+	if x < 0 || y < 0 || x >= g.w || y >= g.h {
+		return nil
+	}
+	return &g.cells[y*g.w+x]
+}
+func (g *grid) SetCell(x, y int, c *uv.Cell) {
+	if x < 0 || y < 0 || x >= g.w || y >= g.h || c == nil {
+		return
+	}
+	g.cells[y*g.w+x] = *c
+}
+func (g *grid) WidthMethod() uv.WidthMethod { return ansi.GraphemeWidth }
+
+func (g *grid) row(y int) string {
+	var b strings.Builder
+	for x := 0; x < g.w; x++ {
+		b.WriteString(g.cells[y*g.w+x].Content)
+	}
+	return b.String()
+}
+
+func (g *grid) text() string {
+	var b strings.Builder
+	for y := 0; y < g.h; y++ {
+		b.WriteString(strings.TrimRight(g.row(y), " "))
+		b.WriteByte('\n')
+	}
+	return b.String()
 }

@@ -84,6 +84,21 @@ func (a *App) handleMouse(ev uv.MouseEvent, m uv.Mouse) {
 
 	a.pointerX, a.pointerY = m.X, m.Y
 
+	// An open menu owns the pointer, the way every menu does.
+	if a.menuMouse(ev, m) {
+		return
+	}
+
+	// Right-click opens one over a pane. The terminal would have shown its own
+	// here, before mouse reporting took the button from it.
+	if click, isClick := ev.(uv.MouseClickEvent); isClick && uv.Mouse(click).Button == uv.MouseRight {
+		if id := paneAt(a.rects, m.X, m.Y); id != 0 {
+			a.setFocus(id)
+			a.openMenu(m.X, m.Y)
+			return
+		}
+	}
+
 	// A pane in flight owns the pointer until it lands. Alt is the modifier
 	// because terminals commonly claim shift for selection and ctrl for
 	// links, and a pane is full-bleed guest content — without a modifier every
@@ -135,7 +150,7 @@ func (a *App) handleMouse(ev uv.MouseEvent, m uv.Mouse) {
 	// the click; the status bar stays reachable; anything else closes it.
 	if a.settingsPanel != nil {
 		if _, isClick := ev.(uv.MouseClickEvent); isClick {
-			if i := buttonAt(a.buttons, m.X, m.Y); i >= 0 {
+			if i := a.buttonUnder(m.X, m.Y); i >= 0 {
 				a.buttons[i].run(a)
 				return
 			}
@@ -153,7 +168,7 @@ func (a *App) handleMouse(ev uv.MouseEvent, m uv.Mouse) {
 	// and one on the status bar still reaches the buttons.
 	if a.sessionPanel != nil {
 		if _, isClick := ev.(uv.MouseClickEvent); isClick {
-			if i := buttonAt(a.buttons, m.X, m.Y); i >= 0 {
+			if i := a.buttonUnder(m.X, m.Y); i >= 0 {
 				a.buttons[i].run(a)
 				return
 			}
@@ -163,7 +178,7 @@ func (a *App) handleMouse(ev uv.MouseEvent, m uv.Mouse) {
 	}
 
 	a.hoverDiv = dividerAt(a.divs, m.X, m.Y)
-	a.hoverBtn = buttonAt(a.buttons, m.X, m.Y)
+	a.hoverBtn = a.buttonUnder(m.X, m.Y)
 
 	if i := a.hoverBtn; i >= 0 {
 		if _, isClick := ev.(uv.MouseClickEvent); isClick {

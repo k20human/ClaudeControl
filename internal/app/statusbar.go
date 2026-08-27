@@ -145,11 +145,43 @@ func (a *App) countLabel() string {
 }
 
 // drawStatusBar paints the bar and its buttons.
+// statusHold is how long a message stays before the buttons come back. Long
+// enough to read a sentence, short enough that the bar is not a log.
+const statusHold = 5 * time.Second
+
+// showingStatus reports whether a message is currently taking the bar. While
+// it is, the buttons it covers are neither drawn nor clickable: a button you
+// cannot see must not be a button you can press.
+func (a *App) showingStatus() bool {
+	return a.status != "" && time.Since(a.statusAt) < statusHold
+}
+
+// setStatus puts a sentence in the bar. It is how the application answers
+// something it was asked to do but could not.
+func (a *App) setStatus(format string, args ...any) {
+	a.status = fmt.Sprintf(format, args...)
+	a.statusAt = time.Now()
+	a.Wake()
+}
+
 func (a *App) drawStatusBar(scr uv.Screen) {
 	y := a.area.H - 1
 	render.Fill(scr, uv.Rect(0, y, a.area.W, 1), barBg)
 
+	if a.showingStatus() {
+		limit := a.barCountX
+		if a.barUsageX > 0 {
+			limit = a.barUsageX
+		}
+		render.Text(scr, 1, y, clipBar(a.status, limit-2), barHotBg, barBg)
+	}
+
 	for i, b := range a.buttons {
+		if a.showingStatus() && !b.warn {
+			// Quit stays: it is the way out, and the way out is never hidden
+			// behind a message.
+			continue
+		}
 		fg, bg := color.Color(barFg), color.Color(barBg)
 		if b.warn {
 			fg = barQuitFg
@@ -259,6 +291,27 @@ func (a *App) accountReading() (usage.Reading, bool) {
 }
 
 // buttonAt returns the index of the button under the pointer, or -1.
+// clipBar shortens a message to the room the bar has for it.
+func clipBar(s string, w int) string {
+	if w <= 0 {
+		return ""
+	}
+	if ansi.StringWidth(s) <= w {
+		return s
+	}
+	return ansi.Truncate(s, w, "…")
+}
+
+// buttonUnder is what is clickable at a point, which is only ever what is
+// drawn there.
+func (a *App) buttonUnder(x, y int) int {
+	i := buttonAt(a.buttons, x, y)
+	if i >= 0 && a.showingStatus() && !a.buttons[i].warn {
+		return -1
+	}
+	return i
+}
+
 func buttonAt(buttons []button, x, y int) int {
 	for i, b := range buttons {
 		if x >= b.rect.X && x < b.rect.X+b.rect.W && y >= b.rect.Y && y < b.rect.Y+b.rect.H {
