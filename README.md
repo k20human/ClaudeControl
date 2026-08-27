@@ -337,6 +337,14 @@ supervisor still supervises from a hidden tab and a Claude session still
 answers. Only drawing is skipped, and every tab is resized with the pane so
 switching never shows one laid out for a size it no longer has.
 
+A pane of tabs stands between the application and what it holds, and passes
+through everything the application looks for on a pane: the account budgets
+for the status bar — asked of **every** tab, since a stats module you are not
+looking at is still reading — the session behind the tab on screen, how far
+back it is scrolled, and the pane's own contents for writing back to the
+configuration. That last one includes tabs you opened while working: saving a
+file that omitted them would lose them.
+
 The strip **replaces the pane title** rather than adding a row — the point of
 tabs is that space is short. A label that does not fit is dropped whole and
 counted (`+2`), so the strip never lies about how many tabs there are.

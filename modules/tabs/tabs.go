@@ -17,6 +17,7 @@ import (
 	"claudecontrol/internal/module"
 	"claudecontrol/internal/pool"
 	"claudecontrol/internal/settings"
+	"claudecontrol/internal/usage"
 )
 
 func init() { module.Register("tabs", New) }
@@ -32,12 +33,18 @@ var (
 	bgActive  = color.RGBA{R: 0x4d, G: 0xd0, B: 0xe1, A: 0xff}
 	fgActive  = color.RGBA{R: 0x10, G: 0x16, B: 0x1e, A: 0xff}
 	fgWaiting = color.RGBA{R: 0xe0, G: 0xb0, B: 0x5c, A: 0xff}
+	// The + is a control, not a label, and is filled so it reads as one.
+	bgPlus = color.RGBA{R: 0x2c, G: 0x3b, B: 0x4d, A: 0xff}
+	fgPlus = color.RGBA{R: 0x4d, G: 0xd0, B: 0xe1, A: 0xff}
 )
 
 // tab is one module and what to call it.
 type tab struct {
 	title string
-	mod   module.Module
+	// name is the module it was built from, kept so the pane can be written
+	// back to the configuration as it stands rather than as it was declared.
+	name string
+	mod  module.Module
 
 	// x and w are where its label was last drawn, so a click lands on what
 	// was seen rather than on a table that could have drifted from it.
@@ -95,7 +102,7 @@ func New(cfg map[string]any) (module.Module, error) {
 		if title == "" {
 			title = name
 		}
-		m.tabs = append(m.tabs, &tab{title: title, mod: child})
+		m.tabs = append(m.tabs, &tab{title: title, name: name, mod: child})
 	}
 	if len(m.tabs) == 0 {
 		// A pane with nothing in it. One is allowed, since tabs are added and
@@ -128,7 +135,7 @@ func (m *Module) Add(name string, opts map[string]any) error {
 	if inner < 1 {
 		inner = 1
 	}
-	m.tabs = append(m.tabs, &tab{title: title, mod: child})
+	m.tabs = append(m.tabs, &tab{title: title, name: name, mod: child})
 	m.active = len(m.tabs) - 1
 	cols := m.cols
 	m.mu.Unlock()
@@ -362,6 +369,80 @@ func (m *Module) CycleTab(delta int) {
 	next := ((m.active+delta)%n + n) % n
 	m.mu.Unlock()
 	m.Select(next)
+}
+
+// A pane of tabs stands between the application and the modules it holds, so
+// everything the application looks for on a pane has to be passed through.
+// What follows is that pass-through. Forgetting one is not a compile error —
+// it is a feature that quietly stops working the day someone puts the module
+// in a tab, which is exactly how the account figures left the status bar.
+
+// Account is the budget reading of whichever tab is fetching one.
+//
+// Every tab is asked, not only the one on screen: a stats module in a tab you
+// are not looking at is still reading, and the bar should still say so.
+func (m *Module) Account() (usage.Reading, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, t := range m.tabs {
+		acc, ok := t.mod.(interface {
+			Account() (usage.Reading, bool)
+		})
+		if !ok {
+			continue
+		}
+		if r, taken := acc.Account(); taken {
+			return r, true
+		}
+	}
+	return usage.Reading{}, false
+}
+
+// SessionID is the session of the tab on screen, if it holds one.
+func (m *Module) SessionID() string {
+	s, ok := m.Active().(interface{ SessionID() string })
+	if !ok {
+		return ""
+	}
+	return s.SessionID()
+}
+
+// ScrollOffset is how far back the tab on screen is.
+func (m *Module) ScrollOffset() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.scrollOffsetLocked()
+}
+
+// scrollOffsetLocked exists because the strip needs this while it is already
+// holding the lock to draw, and a Go mutex is not reentrant.
+func (m *Module) scrollOffsetLocked() int {
+	if len(m.tabs) == 0 {
+		return 0
+	}
+	s, ok := m.tabs[m.active].mod.(interface{ ScrollOffset() int })
+	if !ok {
+		return 0
+	}
+	return s.ScrollOffset()
+}
+
+// Values is the pane as it stands, for writing back to the configuration.
+//
+// As it stands, not as it was declared: a tab opened while you worked is part
+// of the pane now, and saving a configuration that omitted it would lose it.
+func (m *Module) Values() map[string]any {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]any, 0, len(m.tabs))
+	for _, t := range m.tabs {
+		entry := map[string]any{"title": t.title, "module": t.name}
+		if v, ok := t.mod.(interface{ Values() map[string]any }); ok {
+			entry["options"] = v.Values()
+		}
+		out = append(out, entry)
+	}
+	return map[string]any{"tabs": out}
 }
 
 // Settings forwards to the module on screen, so the settings menu configures

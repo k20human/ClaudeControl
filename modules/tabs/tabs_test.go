@@ -1,6 +1,12 @@
 package tabs_test
 
 import (
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +19,8 @@ import (
 	"claudecontrol/internal/module"
 	"claudecontrol/internal/pool"
 	"claudecontrol/internal/session"
+	"claudecontrol/internal/usage"
+	_ "claudecontrol/modules/stats"
 	_ "claudecontrol/modules/tabs"
 	_ "claudecontrol/modules/term"
 )
@@ -345,5 +353,74 @@ func TestTheLastTabIsNotClosed(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "pane") {
 		t.Errorf("the refusal does not say what to do instead: %v", err)
+	}
+}
+
+// A pane of tabs stands between the application and the modules it holds, so
+// everything the application looks for on a pane has to pass through it.
+// Forgetting one is not a compile error — it is a feature that quietly stops
+// working the day someone puts the module in a tab, which is how the account
+// figures left the status bar.
+func TestWhatThePaneHoldsIsStillReachable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprintf(w, `{"five_hour":{"utilization":42.0,"resets_at":%q},
+		                 "seven_day":{"utilization":15.0,"resets_at":%q}}`,
+			time.Now().Add(2*time.Hour).UTC().Format(time.RFC3339),
+			time.Now().Add(50*time.Hour).UTC().Format(time.RFC3339))
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	creds := filepath.Join(dir, ".credentials.json")
+	if err := os.WriteFile(creds, []byte(`{"claudeAiOauth":{"accessToken":"tok","expiresAt":`+
+		strconv.FormatInt(time.Now().Add(time.Hour).UnixMilli(), 10)+`}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// The stats module is in the tab you are *not* looking at, because that is
+	// the case that matters: it is still reading, and the bar should still say
+	// so.
+	m := build(t, map[string]any{"tabs": []any{
+		map[string]any{"title": "front", "module": "term", "options": shell("cat")},
+		map[string]any{"title": "usage", "module": "stats", "options": map[string]any{
+			"endpoint": srv.URL, "credentials": creds,
+		}},
+	}}, module.Context{Wake: func() {}})
+
+	acc, ok := m.(interface {
+		Account() (usage.Reading, bool)
+	})
+	if !ok {
+		t.Fatal("a pane of tabs does not pass the account reading through")
+	}
+	waitFor(t, "the reading", func() bool {
+		r, taken := acc.Account()
+		return taken && r.Err == nil && r.Snapshot.FiveHour.Percent == 42
+	})
+
+	// And the pane can be written back as it stands, tabs and all.
+	vals, ok := m.(interface{ Values() map[string]any })
+	if !ok {
+		t.Fatal("a pane of tabs cannot be written back to the configuration")
+	}
+	got, _ := vals.Values()["tabs"].([]any)
+	if len(got) != 2 {
+		t.Fatalf("Values reports %d tabs, want 2: %v", len(got), vals.Values())
+	}
+	first, _ := got[0].(map[string]any)
+	if first["module"] != "term" || first["title"] != "front" {
+		t.Errorf("a tab is written back as %v", first)
+	}
+
+	// A tab opened while you worked is part of the pane now, and saving a
+	// configuration that omitted it would lose it.
+	adder := m.(interface {
+		Add(string, map[string]any) error
+	})
+	if err := adder.Add("term", map[string]any{"cmd": []any{"sh", "-c", "cat"}}); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	if got, _ := vals.Values()["tabs"].([]any); len(got) != 3 {
+		t.Errorf("Values reports %d tabs after opening one, want 3", len(got))
 	}
 }

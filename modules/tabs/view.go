@@ -93,7 +93,21 @@ func (m *Module) drawStrip(scr uv.Screen, area uv.Rectangle) {
 	}
 
 	m.plusX = limit - area.Min.X
-	render.Text(scr, limit, area.Min.Y, plusLabel, fgIdle, bgStrip)
+	// Filled rather than tinted. It was drawn in the same muted grey as an
+	// inactive tab, which made the one control in the strip look like the
+	// least important thing in it.
+	render.Fill(scr, uv.Rect(limit, area.Min.Y, ansi.StringWidth(plusLabel), 1), bgPlus)
+	render.Text(scr, limit, area.Min.Y, plusLabel, fgPlus, bgPlus)
+
+	// How far back the tab on screen is, when it is not at the bottom. The
+	// pane has no title row to put this in — the strip took it — and without
+	// it you would type into a pane showing the past and wonder why.
+	if n := m.scrollOffsetLocked(); n > 0 {
+		mark := "↑ " + itoa(n) + " "
+		if at := limit - ansi.StringWidth(mark); at > x {
+			render.Text(scr, at, area.Min.Y, mark, fgWaiting, bgStrip)
+		}
+	}
 }
 
 func itoa(n int) string {
