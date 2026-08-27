@@ -442,18 +442,9 @@ having taken it, the application owes one back.
 bracketed paste, which is forwarded whole to the focused pane and never scanned
 for shortcuts.
 
-**Right-click → paste** needs a way to read the clipboard, and a terminal
-application has none of its own. A helper is asked first — install one and it
-simply works:
-
-```sh
-sudo apt install wl-clipboard      # Wayland; xclip or xsel under X11
-```
-
-Failing that, the terminal itself is asked over OSC 52, which many terminals
-refuse because it would let any program read what you copied. If neither works
-the bar says so and names the remedy, rather than a paste that quietly does
-nothing.
+**Right-click → paste** needs the same clipboard tool as copy, for the same
+reason: a terminal application has no way of its own to reach the clipboard.
+See *Selecting and copying* below.
 
 ## Selecting and copying
 
@@ -468,10 +459,19 @@ a release so it is not left believing the button is still down. A guest that
 **does** follow the pointer — an editor with the mouse enabled — keeps its
 drag, since it is doing something with it.
 
-Copying goes through the same two paths as pasting, in the same order: a
-helper program if one is installed, and otherwise the terminal itself over
-OSC 52. Writing is the half terminals are likelier to allow, since handing
-text to the clipboard gives nothing away.
+**Copying needs a clipboard tool.** Both directions go through the same two
+paths in the same order: a helper program if one is installed, and otherwise
+the terminal itself over OSC 52 — which most terminals refuse in both
+directions, since one lets a program read what you copied and the other lets
+it overwrite it. gnome-terminal is among them.
+
+```sh
+sudo apt install wl-clipboard      # Wayland; xclip or xsel under X11
+```
+
+Without one, the `copy` and `paste` entries in the menu say `no clipboard
+tool` **before** you press them — finding out afterwards, from a message about
+a copy that did not happen, is finding out too late.
 
 ## Scrolling
 

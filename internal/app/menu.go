@@ -41,10 +41,17 @@ type menuState struct {
 // Paste comes first because it is the reason the menu exists: enabling mouse
 // reporting takes the right button away from the terminal, and with it the
 // menu the terminal would have shown. Having taken it, we owe one back.
-func menuItems() []menuItem {
+func (a *App) menuItems() []menuItem {
+	// The clipboard entries say what they will need before you press them.
+	// Finding out afterwards, from a message about a copy that did not
+	// happen, is finding out too late.
+	clip := ""
+	if _, ok := clipboard.Helper(); !ok {
+		clip = "no clipboard tool"
+	}
 	return []menuItem{
-		{"copy", "", (*App).copySelection},
-		{"paste", "", (*App).pasteFromClipboard},
+		{"copy", clip, (*App).copySelection},
+		{"paste", clip, (*App).pasteFromClipboard},
 		{"new session", "alt+n", func(a *App) { _ = a.newPane(layout.Horizontal) }},
 		{"close pane", "alt+x", func(a *App) { _ = a.closePane(a.focus) }},
 		{"zoom", "alt+z", (*App).toggleZoom},
@@ -54,7 +61,7 @@ func menuItems() []menuItem {
 
 // openMenu puts a menu at the pointer, kept inside the screen.
 func (a *App) openMenu(x, y int) {
-	items := menuItems()
+	items := a.menuItems()
 	w := 0
 	for _, it := range items {
 		if n := ansi.StringWidth(it.label) + ansi.StringWidth(it.hint) + 4; n > w {
@@ -234,11 +241,15 @@ func (a *App) copySelection() {
 	case err == nil:
 		a.setStatus("copied %d characters", len([]rune(text)))
 	case errors.Is(err, clipboard.ErrNoHelper):
-		// No helper, so ask the terminal to take it. There is no reply to
-		// wait for, and no way to know whether it accepted.
+		// No helper, so ask the terminal to take it. There is no reply and no
+		// way to know whether it did, and most terminals refuse — handing
+		// text to the clipboard is how a program could overwrite what you
+		// copied. The message must not read as a success.
 		_, _ = a.term.Write([]byte(ansi.SetClipboard(ansi.SystemClipboard, text)))
-		a.setStatus("handed %d characters to the terminal — install wl-clipboard if it did not take them",
-			len([]rune(text)))
+		// The remedy first: the bar truncates, and what is cut has to be the
+		// part you could have guessed. It stays conditional because a
+		// terminal that does accept OSC 52 has just taken the text.
+		a.setStatus("install wl-clipboard if the copy did not take")
 	default:
 		a.setStatus("%s", err)
 	}
@@ -249,6 +260,7 @@ func (a *App) copySelection() {
 func (a *App) askTerminalForClipboard() {
 	a.clipboardAsked = time.Now()
 	_, _ = a.term.Write([]byte(ansi.RequestSystemClipboard))
+	a.setStatus("install wl-clipboard if nothing pastes")
 	a.Wake()
 }
 
@@ -258,8 +270,7 @@ func (a *App) clipboardTimedOut() {
 		return
 	}
 	a.clipboardAsked = time.Time{}
-	a.setStatus("this terminal will not hand over the clipboard — " +
-		"use ctrl+shift+v, or install wl-clipboard for right-click paste")
+	a.setStatus("the terminal refused — paste with ctrl+shift+v")
 }
 
 // deliverPaste hands text to the focused module, whole.
