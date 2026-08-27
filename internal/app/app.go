@@ -173,7 +173,7 @@ func New(cfgPath string) (*App, error) {
 	// The conversations the last run left behind, handed out in the order the
 	// panes appear — the same order they were recorded in.
 	resuming, _ := LoadSnapshot(SnapshotPath())
-	pending := append([]string(nil), resuming.Sessions...)
+	pending := resumable(resuming.Sessions)
 
 	for _, id := range layout.Leaves(root) {
 		spec := panes[id]
@@ -195,6 +195,23 @@ func New(cfgPath string) (*App, error) {
 		a.prev = ids[0]
 	}
 	return a, nil
+}
+
+// resumable drops the sessions that cannot be resumed.
+//
+// A session that was opened and never spoken to has no transcript, and asking
+// Claude Code to resume it fails with "no conversation found with session ID"
+// — an error on the pane, at startup, about something the person did not do
+// and can do nothing about. Checking first turns that into a fresh pane, which
+// is what they wanted anyway.
+func resumable(ids []string) []string {
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if transcript.Exists(id) {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 // withResume gives a pane about to be built the session it had last time.

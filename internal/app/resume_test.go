@@ -1,6 +1,8 @@
 package app
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 )
@@ -94,5 +96,33 @@ func TestNoRecordedSessionsChangesNothing(t *testing.T) {
 	opts := map[string]any{"dir": "/one"}
 	if got := withResume("claude", opts, &pending); !reflect.DeepEqual(got, opts) {
 		t.Errorf("withResume = %v, want %v", got, opts)
+	}
+}
+
+// A session that was opened and never spoken to has no transcript, and asking
+// Claude Code to resume it fails with an error the person can do nothing
+// about. Dropping it turns that into a fresh pane, which is what they wanted.
+func TestOnlySessionsWithATranscriptAreResumed(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", dir)
+	project := filepath.Join(dir, "projects", "-home-k-api")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(project, "spoke.jsonl"), []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got := resumable([]string{"never-spoke", "spoke", "also-never"})
+	if len(got) != 1 || got[0] != "spoke" {
+		t.Errorf("resumable = %v, want only the one with a transcript", got)
+	}
+
+	// And the survivor still goes to the first pane, rather than the gap
+	// leaving a pane resuming nothing while a later one gets it.
+	pending := got
+	first := withResume("claude", nil, &pending)
+	if first["resume"] != "spoke" {
+		t.Errorf("the first pane got %v", first)
 	}
 }

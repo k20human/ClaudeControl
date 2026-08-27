@@ -144,7 +144,9 @@ the application has written to it.
 
 **Conversations come back.** Every run records the Claude sessions that were
 open, in the order their panes appear, and the next run hands them out in that
-order — each pane starts with `--resume` on the conversation it had. Rearrange
+order — each pane starts with `--resume` on the conversation it had. A session
+that was opened and never spoken to has no transcript and is quietly dropped:
+resuming it would fail with an error about something you did not do. Rearrange
 the panes between runs and a conversation lands in a different one, which is
 predictable and far better than losing it. A `resume` written here by hand
 always wins: it was put there on purpose.
