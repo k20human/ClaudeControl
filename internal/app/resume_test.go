@@ -5,6 +5,12 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
+
+	uv "github.com/charmbracelet/ultraviolet"
+
+	"claudecontrol/internal/layout"
+	"claudecontrol/internal/module"
 )
 
 // Conversations are handed out in the order the panes appear, which is the
@@ -126,3 +132,62 @@ func TestOnlySessionsWithATranscriptAreResumed(t *testing.T) {
 		t.Errorf("the first pane got %v", first)
 	}
 }
+
+// The conversations and the arrangement do not change together: opening a tab
+// adds one and leaves the layout exactly as it was. Recording only on a layout
+// change meant a conversation opened in a tab was never written down, and
+// closing the application lost it.
+func TestTheSnapshotFollowsTheConversationsNotTheLayout(t *testing.T) {
+	state := filepath.Join(t.TempDir(), "state.json")
+	t.Setenv("XDG_STATE_HOME", filepath.Dir(filepath.Dir(state)))
+
+	a := &App{
+		modules:     map[layout.PaneID]module.Module{},
+		moduleNames: map[layout.PaneID]string{},
+		root:        &layout.Node{Kind: layout.KindLeaf, PaneID: 1},
+	}
+	holder := &sessionHolder{ids: []string{"first"}}
+	a.modules[1] = holder
+
+	a.saveSnapshot()
+	got, err := LoadSnapshot(SnapshotPath())
+	if err != nil {
+		t.Fatalf("LoadSnapshot: %v", err)
+	}
+	if len(got.Sessions) != 1 || got.Sessions[0] != "first" {
+		t.Fatalf("after the first save: %v", got.Sessions)
+	}
+
+	// A tab opens. The layout has not moved.
+	holder.ids = []string{"first", "second"}
+	a.saveSnapshot()
+	got, _ = LoadSnapshot(SnapshotPath())
+	if len(got.Sessions) != 2 || got.Sessions[1] != "second" {
+		t.Errorf("a conversation opened in a tab was not recorded: %v", got.Sessions)
+	}
+
+	// And nothing changing writes nothing: the file keeps its modification
+	// time, which is what makes a per-frame call acceptable.
+	before, err := os.Stat(SnapshotPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(20 * time.Millisecond)
+	a.saveSnapshot()
+	after, err := os.Stat(SnapshotPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !after.ModTime().Equal(before.ModTime()) {
+		t.Error("an unchanged set of conversations rewrote the file")
+	}
+}
+
+// sessionHolder is a module that holds whatever conversations it is told to.
+type sessionHolder struct{ ids []string }
+
+func (s *sessionHolder) Init(module.Context) error    { return nil }
+func (s *sessionHolder) Resize(int, int) error        { return nil }
+func (s *sessionHolder) Draw(uv.Screen, uv.Rectangle) {}
+func (s *sessionHolder) Close() error                 { return nil }
+func (s *sessionHolder) Sessions() []string           { return s.ids }

@@ -83,7 +83,17 @@ func LoadSnapshot(path string) (Snapshot, error) {
 }
 
 // saveSnapshot records the open conversations so a later run can bring them
-// back.
+// back, when they are not what was last recorded.
+//
+// Called from the draw loop rather than from the layout, because the two do
+// not change together: opening a tab adds a conversation and leaves the
+// arrangement exactly as it was. Tying this to the layout meant a conversation
+// opened in a tab was never written down, and closing the application lost it
+// — which is what happened.
+//
+// The comparison is what makes a per-frame call cheap: a handful of interface
+// calls and a string compare, and a write only when something actually
+// changed.
 //
 // Failures are silent: this is a convenience, and a warning about it would sit
 // on top of a live session.
@@ -103,5 +113,21 @@ func (a *App) saveSnapshot() {
 		}
 		snap.Sessions = append(snap.Sessions, lister.Sessions()...)
 	}
+	if sameStrings(a.savedSessions, snap.Sessions) {
+		return
+	}
+	a.savedSessions = snap.Sessions
 	_ = SaveSnapshot(SnapshotPath(), snap)
+}
+
+func sameStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

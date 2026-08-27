@@ -41,6 +41,10 @@ type App struct {
 	tailerMu sync.Mutex
 	tailers  map[string]*transcript.Tailer
 
+	// savedSessions is what the snapshot on disk holds, so it is rewritten
+	// only when the conversations actually change.
+	savedSessions []string
+
 	// usage is the last turn seen for each session, kept here so a pane title
 	// can show it without subscribing to the bus per pane.
 	usageMu sync.RWMutex
@@ -502,6 +506,7 @@ func (a *App) draw() {
 	a.drawOverlay(a.scr)
 	a.drawCursor(a.scr)
 	a.setWindowTitle()
+	a.saveSnapshot()
 }
 
 // cursorTarget is where the cursor belongs this frame, in screen coordinates,
