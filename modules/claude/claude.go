@@ -20,6 +20,10 @@ func init() { module.Register("claude", New) }
 
 // Module hosts one Claude Code session.
 type Module struct {
+	// view is the window onto the session: usually the live screen, and
+	// sometimes further back when the wheel has been turned.
+	view session.View
+
 	binary string
 	dir    string
 	extra  []string
@@ -170,9 +174,7 @@ func (m *Module) title() string {
 
 // Draw paints the emulated screen into area.
 func (m *Module) Draw(scr uv.Screen, area uv.Rectangle) {
-	if m.sess != nil {
-		m.sess.Term.Draw(scr, area)
-	}
+	m.view.Draw(m.sess, scr, area)
 }
 
 // Cursor reports the guest cursor, pane-local.
@@ -191,6 +193,10 @@ func (m *Module) Key(k uv.KeyEvent) {
 	if m.sess == nil {
 		return
 	}
+	// Typing returns to the bottom, the way a terminal jumps back to the
+	// prompt: what you type appears where the cursor is, and you should be
+	// looking at it.
+	m.view.Reset()
 	if key := k.Key(); key.Text != "" {
 		m.sess.SendText(key.Text)
 		return
@@ -200,9 +206,20 @@ func (m *Module) Key(k uv.KeyEvent) {
 
 // Mouse forwards a pane-local mouse event.
 func (m *Module) Mouse(e uv.MouseEvent) {
-	if m.sess != nil {
-		m.sess.SendMouse(e)
+	if m.sess == nil {
+		return
 	}
+	// The wheel reaches the history first, unless the guest has taken the
+	// whole screen and is drawing its own.
+	if w, ok := e.(uv.MouseWheelEvent); ok {
+		if m.view.Wheel(m.sess, w.Button == uv.MouseWheelUp) {
+			if m.ctx.Wake != nil {
+				m.ctx.Wake()
+			}
+			return
+		}
+	}
+	m.sess.SendMouse(e)
 }
 
 // Paste forwards pasted text without inspecting it.
@@ -214,6 +231,9 @@ func (m *Module) Paste(text string) {
 
 // Session exposes the hosted session.
 func (m *Module) Session() *session.Session { return m.sess }
+
+// ScrollOffset is how far back the view is, zero being the live screen.
+func (m *Module) ScrollOffset() int { return m.view.Offset() }
 
 // Close releases the pane's hold on the session.
 //

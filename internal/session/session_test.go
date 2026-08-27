@@ -287,3 +287,64 @@ func alive(pid int) bool {
 	}
 	return p.Signal(syscall.Signal(0)) == nil
 }
+
+// A guest on the normal screen pushes its past into the scrollback, and that
+// past is what the wheel should reach. Scrolling up has to show it, in order,
+// above what is still on screen.
+func TestDrawScrolledShowsWhatScrolledOff(t *testing.T) {
+	const w, h = 20, 5
+	s, err := session.Start(session.Spec{
+		ID: "history", Width: w, Height: h,
+		// Twelve numbered lines through a five-row screen: seven have gone.
+		Argv: []string{"sh", "-c", "for i in 1 2 3 4 5 6 7 8 9 10 11 12; do echo line-$i; done; sleep 30"},
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer s.Close()
+
+	waitFor(t, "the last line", func() bool { return anyRowContains(s, w, h, "line-12") })
+	waitFor(t, "the history", func() bool { return s.History() >= 7 })
+
+	if s.AltScreen() {
+		t.Fatal("a plain shell is reported as being on the alternate screen")
+	}
+
+	// At the bottom, only the tail is visible.
+	live := scrolled(s, w, h, 0)
+	if strings.Contains(live, "line-3") {
+		t.Errorf("an old line is on the live screen:\n%s", live)
+	}
+
+	// Scrolled up by four, the four lines above the screen appear at the top
+	// and the screen's own first rows follow.
+	back := scrolled(s, w, h, 4)
+	for _, want := range []string{"line-5", "line-8"} {
+		if !strings.Contains(back, want) {
+			t.Errorf("scrolled back four lines, %q is missing:\n%s", want, back)
+		}
+	}
+	// And the bottom of the screen has been pushed out of view.
+	if strings.Contains(back, "line-12") {
+		t.Errorf("scrolling back kept the newest line:\n%s", back)
+	}
+
+	// Asking for more history than there is shows all of it rather than
+	// failing or drawing blank rows.
+	deep := scrolled(s, w, h, 9999)
+	if !strings.Contains(deep, "line-1") {
+		t.Errorf("the oldest line is unreachable:\n%s", deep)
+	}
+}
+
+// scrolled renders a session at an offset and returns it as text.
+func scrolled(s *session.Session, w, h, offset int) string {
+	g := newGrid(w, h)
+	s.DrawScrolled(g, uv.Rect(0, 0, w, h), offset)
+	var b strings.Builder
+	for y := 0; y < h; y++ {
+		b.WriteString(g.row(y))
+		b.WriteByte('\n')
+	}
+	return b.String()
+}

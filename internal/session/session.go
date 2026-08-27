@@ -221,6 +221,76 @@ func (s *Session) repaintLocked() {
 	_, _ = s.Term.Write([]byte(b.String()))
 }
 
+// History is how many lines have scrolled off the top and been kept.
+func (s *Session) History() int {
+	s.termMu.Lock()
+	defer s.termMu.Unlock()
+	return s.Term.ScrollbackLen()
+}
+
+// AltScreen reports whether the guest has taken the whole screen for itself.
+//
+// It decides who the wheel belongs to. A guest on the alternate screen is
+// drawing its own view and scrolling it its own way — there is no history
+// behind it, because nothing has scrolled off. A guest on the normal screen
+// has pushed its past into the scrollback, and that past is what the wheel
+// should reach.
+func (s *Session) AltScreen() bool {
+	s.termMu.Lock()
+	defer s.termMu.Unlock()
+	return s.Term.IsAltScreen()
+}
+
+// DrawScrolled paints the session with offset lines of history above the live
+// screen.
+//
+// At offset zero this is the ordinary path: Draw, which copies only the lines
+// the emulator considers damaged and is what keeps a busy pane cheap. Any
+// other offset takes the slow path and copies every visible cell, because the
+// mapping from emulator row to screen row has changed and damage marks are
+// about rows that have not moved. Scrolling is a transient state, and a full
+// copy of one pane for as long as it lasts is a fair price for not having to
+// reason about which of two coordinate systems a damage mark belongs to.
+func (s *Session) DrawScrolled(scr uv.Screen, area uv.Rectangle, offset int) {
+	if offset <= 0 {
+		s.Term.Draw(scr, area)
+		return
+	}
+
+	s.termMu.Lock()
+	defer s.termMu.Unlock()
+
+	history := s.Term.ScrollbackLen()
+	if offset > history {
+		offset = history
+	}
+	if offset <= 0 {
+		s.Term.Draw(scr, area)
+		return
+	}
+
+	for row := 0; row < area.Dy(); row++ {
+		for col := 0; col < area.Dx(); col++ {
+			// The cells are read and copied while the lock is held, which is
+			// what makes this safe: these accessors hand back a pointer into
+			// the live buffer, and the pump writes to that buffer under the
+			// same lock.
+			var cell *uv.Cell
+			if row < offset {
+				cell = s.Term.ScrollbackCellAt(col, history-offset+row)
+			} else {
+				cell = s.Term.CellAt(col, row-offset)
+			}
+			if cell == nil {
+				scr.SetCell(area.Min.X+col, area.Min.Y+row, &uv.EmptyCell)
+				continue
+			}
+			copied := *cell
+			scr.SetCell(area.Min.X+col, area.Min.Y+row, &copied)
+		}
+	}
+}
+
 // SendKey encodes a key the way this guest asked for it.
 func (s *Session) SendKey(k uv.KeyEvent) { s.Term.SendKey(k) }
 

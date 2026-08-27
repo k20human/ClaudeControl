@@ -138,15 +138,24 @@ func (a *App) drawPaneTitles(scr uv.Screen) {
 // paneDetail is what this pane is worth saying beyond its name: for a Claude
 // session, the model it answered with and what that turn carried.
 func (a *App) paneDetail(id layout.PaneID) string {
+	// How far back the view is comes first, because it explains what you are
+	// looking at. Typing anything returns to the bottom, and until then the
+	// pane is showing the past.
+	var parts []string
+	if sc, ok := a.modules[id].(interface{ ScrollOffset() int }); ok {
+		if n := sc.ScrollOffset(); n > 0 {
+			parts = append(parts, fmt.Sprintf("↑ %d", n))
+		}
+	}
+
 	sm, ok := a.modules[id].(interface{ SessionID() string })
 	if !ok {
-		return ""
+		return strings.Join(parts, " · ")
 	}
 	m, ok := a.sessionUsage(sm.SessionID())
 	if !ok {
-		return ""
+		return strings.Join(parts, " · ")
 	}
-	parts := make([]string, 0, 3)
 	if m.Model != "" {
 		parts = append(parts, transcript.ShortModel(m.Model))
 	}
@@ -155,9 +164,6 @@ func (a *App) paneDetail(id layout.PaneID) string {
 		// published number that goes out of date, and a wrong percentage is
 		// worse than none.
 		parts = append(parts, transcript.HumanTokens(m.Context)+" ctx")
-	}
-	if m.CacheRate > 0 {
-		parts = append(parts, fmt.Sprintf("%.0f%% cache", m.CacheRate*100))
 	}
 	return strings.Join(parts, " · ")
 }

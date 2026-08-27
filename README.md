@@ -256,7 +256,9 @@ runs, and it is interactive: a command that asks a question can be answered.
 ```
 
 Per-session figures — model, context, share served from cache, thinking tokens
-— come from the transcripts on disk and cost nothing.
+— come from the transcripts on disk and cost nothing. The pane title shows the
+model and the context; the rest stays in the pane, where there is room to say
+what it means.
 
 The five-hour and weekly budgets are **the only thing in this application that
 reaches the network**. They are not on disk: they are read with the OAuth token
@@ -443,6 +445,20 @@ Failing that, the terminal itself is asked over OSC 52, which many terminals
 refuse because it would let any program read what you copied. If neither works
 the bar says so and names the remedy, rather than a paste that quietly does
 nothing.
+
+## Scrolling
+
+The wheel reaches a pane's history, three lines a notch. A guest on the normal
+screen does not scroll — it prints, and what it printed goes into the
+scrollback; in a terminal you reach that with the terminal's own scrollbar, and
+hosting the guest takes that away. The pane title says how far back you are
+(`↑ 24`), and typing anything returns to the bottom, the way a terminal jumps
+back to the prompt.
+
+A guest that has taken the **whole screen** keeps the wheel: a pager, an
+editor or a full-screen picker is drawing its own view and has no history
+behind it, since nothing has scrolled off. Forwarding is the only thing that
+could be right there, and the alternate screen is how the two are told apart.
 
 Every `alt+` combination above was checked against the Claude Code binary, and
 none of them is one Claude Code consumes. They were also checked against the
