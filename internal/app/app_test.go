@@ -95,6 +95,13 @@ func run(t *testing.T, cfg string, w, h int) (*session.Session, func() *screen) 
 // and setting them afterwards would replace the session's own.
 func runWith(t *testing.T, cfg string, w, h int, cb vt.Callbacks) (*session.Session, func() *screen) {
 	t.Helper()
+	return runWithEnv(t, cfg, w, h, cb, nil)
+}
+
+// runWithEnv adds to the hosted application's environment, which is how a test
+// puts a stand-in on its PATH.
+func runWithEnv(t *testing.T, cfg string, w, h int, cb vt.Callbacks, env []string) (*session.Session, func() *screen) {
+	t.Helper()
 	s, err := session.Start(session.Spec{
 		Callbacks: cb,
 		ID:        "claudecontrol",
@@ -103,7 +110,7 @@ func runWith(t *testing.T, cfg string, w, h int, cb vt.Callbacks) (*session.Sess
 		// The application records its panes on every layout change. Pointed at
 		// a temporary directory so a test run never touches the state of the
 		// person running it.
-		Env:    []string{"XDG_STATE_HOME=" + t.TempDir()},
+		Env:    append([]string{"XDG_STATE_HOME=" + t.TempDir()}, env...),
 		Width:  w,
 		Height: h,
 	})

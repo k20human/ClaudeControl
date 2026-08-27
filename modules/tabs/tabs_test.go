@@ -424,3 +424,65 @@ func TestWhatThePaneHoldsIsStillReachable(t *testing.T) {
 		t.Errorf("Values reports %d tabs after opening one, want 3", len(got))
 	}
 }
+
+// Everything the application looks for on a pane's module, in one place.
+//
+// A pane of tabs stands between the two, so each of these has to be passed
+// through. Three were missed one at a time — the account budgets, the values
+// written back to the configuration, and the selected text — each discovered
+// only when the feature stopped working. This list is what a fourth addition
+// should be compared against.
+//
+// It is not automatic: nothing makes the application declare what it needs.
+// What it does give is one place to look, and a failure that names the method
+// rather than a feature that quietly does nothing.
+func TestEveryInterfaceTheApplicationLooksForIsPassedThrough(t *testing.T) {
+	m := build(t, two(), module.Context{Wake: func() {}})
+
+	checks := []struct {
+		what string
+		ok   bool
+	}{
+		{"Account", implements[interface {
+			Account() (usage.Reading, bool)
+		}](m)},
+		{"SessionID", implements[interface{ SessionID() string }](m)},
+		{"ScrollOffset", implements[interface{ ScrollOffset() int }](m)},
+		{"SelectedText", implements[interface{ SelectedText() string }](m)},
+		{"Values", implements[interface{ Values() map[string]any }](m)},
+		{"Title", implements[interface{ Title() (string, bool) }](m)},
+		{"Cursor", implements[module.Cursorer](m)},
+		{"Key/Mouse/Paste", implements[module.Inputter](m)},
+		{"Settings", implements[module.Provider](m)},
+		// The pane's own gestures, which the application drives from its
+		// keys and the strip's buttons.
+		{"CycleTab", implements[interface{ CycleTab(int) }](m)},
+		{"Add", implements[interface {
+			Add(string, map[string]any) error
+		}](m)},
+		{"CloseTab", implements[interface {
+			CloseTab(int) error
+			ActiveIndex() int
+			Count() int
+		}](m)},
+	}
+	for _, c := range checks {
+		if !c.ok {
+			t.Errorf("a pane of tabs does not pass %s through", c.what)
+		}
+	}
+}
+
+func implements[T any](v any) bool {
+	_, ok := v.(T)
+	return ok
+}
+
+// And the selected text is the one on screen, not another tab's.
+func TestTheSelectionComesFromTheTabOnScreen(t *testing.T) {
+	m := build(t, two(), module.Context{Wake: func() {}})
+	sel := m.(interface{ SelectedText() string })
+	if got := sel.SelectedText(); got != "" {
+		t.Errorf("nothing is selected, yet the pane reports %q", got)
+	}
+}

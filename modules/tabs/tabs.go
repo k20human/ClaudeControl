@@ -407,6 +407,15 @@ func (m *Module) SessionID() string {
 	return s.SessionID()
 }
 
+// SelectedText is what is selected in the tab on screen.
+func (m *Module) SelectedText() string {
+	s, ok := m.Active().(interface{ SelectedText() string })
+	if !ok {
+		return ""
+	}
+	return s.SelectedText()
+}
+
 // ScrollOffset is how far back the tab on screen is.
 func (m *Module) ScrollOffset() int {
 	m.mu.Lock()

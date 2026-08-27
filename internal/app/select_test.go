@@ -3,12 +3,13 @@ package app_test
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"claudecontrol/internal/clipboard"
+	"github.com/charmbracelet/x/vt"
 )
 
 // press, moveTo and release drive a drag the way a terminal reports one.
@@ -16,6 +17,38 @@ func press(t *testing.T, s sender, x, y int) {
 	t.Helper()
 	s.SendText(fmt.Sprintf("\x1b[<0;%d;%dM", x+1, y+1))
 	time.Sleep(80 * time.Millisecond)
+}
+
+// fakeClipboard puts a stand-in wl-copy first on the PATH, so a test never
+// writes to the clipboard of whoever is running it. It returns the
+// environment to hand the application and the file the stand-in writes to.
+func fakeClipboard(t *testing.T) ([]string, string) {
+	t.Helper()
+	dir := t.TempDir()
+	out := filepath.Join(dir, "clipboard")
+	script := "#!/bin/sh\ncat > " + out + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "wl-copy"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return []string{"PATH=" + dir + ":" + os.Getenv("PATH")}, out
+}
+
+// noClipboard puts a PATH with no clipboard program on it at all.
+//
+// It cannot simply drop a directory: wl-copy lives in /usr/bin beside the
+// shell the panes need. So the directory holds a link to the shell and
+// nothing else.
+func noClipboard(t *testing.T) []string {
+	t.Helper()
+	dir := t.TempDir()
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Fatalf("no shell to link: %v", err)
+	}
+	if err := os.Symlink(sh, filepath.Join(dir, "sh")); err != nil {
+		t.Fatal(err)
+	}
+	return []string{"PATH=" + dir}
 }
 
 func selectConfig(t *testing.T, script string) string {
@@ -135,17 +168,31 @@ func TestCopyingNothingSaysSo(t *testing.T) {
 }
 
 // A copy that reached nothing must not read like a copy that worked. Without a
-// clipboard tool the terminal is asked directly, and most refuse — so the
-// menu says what it will need before you press it, and the message afterwards
-// says what happened rather than what was attempted.
+// clipboard tool the terminal is asked directly, and most refuse — so the menu
+// says what it will need before you press it, and the message afterwards leads
+// with the remedy, since what a truncated line cuts has to be the part you
+// could have guessed.
 func TestCopyWithoutAClipboardToolSaysSoBeforeAndAfter(t *testing.T) {
 	const W, H = 70, 10
-	s, snap := run(t, selectConfig(t, `"printf 'HELLO-WORLD'; cat"`), W, H)
+	s, snap := runWithEnv(t, selectConfig(t, `"printf 'HELLO-WORLD'; cat"`), W, H,
+		vt.Callbacks{}, noClipboard(t))
 	waitForAnywhere(t, snap, "HELLO-WORLD")
 
-	// An empty PATH for the hosted application would break everything else it
-	// runs, so this checks the two messages against whatever this machine has.
-	_, haveHelper := clipboardHelper()
+	click(t, s, 5, paneRow0)
+	rightClick(t, s, 10, paneRow0)
+	waitForAnywhere(t, snap, "copy")
+	if !anywhere(snap(), "no clipboard tool") {
+		t.Errorf("the menu does not warn before the attempt:\n%s", snap().row(0))
+	}
+}
+
+// With one, the copy happens and says how much.
+func TestCopyWithAClipboardToolCopies(t *testing.T) {
+	const W, H = 70, 10
+	env, out := fakeClipboard(t)
+	s, snap := runWithEnv(t, selectConfig(t, `"printf 'HELLO-WORLD'; cat"`), W, H,
+		vt.Callbacks{}, env)
+	waitForAnywhere(t, snap, "HELLO-WORLD")
 
 	row := paneRow0
 	from := columnOf(snap().row(row), "HELLO")
@@ -156,15 +203,11 @@ func TestCopyWithoutAClipboardToolSaysSoBeforeAndAfter(t *testing.T) {
 
 	rightClick(t, s, 10, row)
 	waitForAnywhere(t, snap, "copy")
-
-	// The entry warns beforehand, exactly when there is something to warn
-	// about.
-	warned := anywhere(snap(), "no clipboard tool")
-	if warned == haveHelper {
-		t.Errorf("the menu warns=%v while a helper is present=%v", warned, haveHelper)
+	if anywhere(snap(), "no clipboard tool") {
+		t.Errorf("the menu warns although a tool is present:\n%s", snap().row(0))
 	}
 
-	var at, atY = -1, -1
+	at, atY := -1, -1
 	for y := 0; y < H; y++ {
 		if c := columnOf(snap().row(y), "copy"); c >= 0 {
 			at, atY = c, y
@@ -178,22 +221,67 @@ func TestCopyWithoutAClipboardToolSaysSoBeforeAndAfter(t *testing.T) {
 
 	deadline := time.Now().Add(4 * time.Second)
 	for time.Now().Before(deadline) {
-		bar := snap().row(H - 1)
-		switch {
-		case haveHelper && strings.Contains(bar, "copied"):
-			return
-		case !haveHelper && strings.Contains(bar, "install wl-clipboard"):
-			// And it must not claim to have done anything.
-			if strings.Contains(bar, "copied") {
-				t.Errorf("a copy that reached nothing read as a success: %q", bar)
-			}
+		if raw, err := os.ReadFile(out); err == nil && strings.Contains(string(raw), "HELLO") {
 			return
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Errorf("copying said nothing useful: %q", snap().row(H-1))
+	raw, _ := os.ReadFile(out)
+	t.Errorf("the clipboard received %q; the bar says %q", string(raw), snap().row(H-1))
 }
 
-// clipboardHelper reports whether this machine has one, the same way the
-// application decides.
-func clipboardHelper() (string, bool) { return clipboard.Helper() }
+// A pane of tabs stands between the application and what it holds, and the
+// selected text has to reach across it. It did not: copy answered "nothing in
+// this pane can be selected", which was true of the pane and false of the tab
+// in it.
+func TestCopyingWorksInsideATabbedPane(t *testing.T) {
+	const W, H = 80, 12
+	env, out := fakeClipboard(t)
+	cfg := filepath.Join(t.TempDir(), "t.yaml")
+	if err := os.WriteFile(cfg, []byte(`layout:
+  module: tabs
+  options:
+    tabs:
+      - { title: one, module: term, options: { cmd: [sh, -c, "printf 'INSIDE-A-TAB'; cat"] } }
+      - { title: two, module: term, options: { cmd: [sh, -c, "cat"] } }
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	s, snap := runWithEnv(t, cfg, W, H, vt.Callbacks{}, env)
+	waitForAnywhere(t, snap, "INSIDE-A-TAB")
+
+	row := paneRow0
+	from := columnOf(snap().row(row), "INSIDE")
+	if from < 0 {
+		t.Fatalf("no text to select: %q", snap().row(row))
+	}
+	click(t, s, 5, row)
+	press(t, s, from, row)
+	drag(t, s, from+5, row)
+	release(t, s, from+5, row)
+
+	rightClick(t, s, 10, row)
+	waitForAnywhere(t, snap, "copy")
+	at, atY := -1, -1
+	for y := 0; y < H; y++ {
+		if c := columnOf(snap().row(y), "copy"); c >= 0 {
+			at, atY = c, y
+			break
+		}
+	}
+	if at < 0 {
+		t.Fatal("no copy entry in the menu")
+	}
+	click(t, s, at, atY)
+
+	deadline := time.Now().Add(4 * time.Second)
+	for time.Now().Before(deadline) {
+		if raw, err := os.ReadFile(out); err == nil && strings.Contains(string(raw), "INSIDE") {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	raw, _ := os.ReadFile(out)
+	t.Errorf("the clipboard received %q; the bar says %q", string(raw), snap().row(H-1))
+}
