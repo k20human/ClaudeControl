@@ -21,6 +21,15 @@ const WheelStep = 3
 type View struct {
 	offset int
 	sel    selection
+	find   search
+}
+
+// search is what is being looked for and where it was found, in lines of the
+// whole output.
+type search struct {
+	query   string
+	matches []int
+	at      int
 }
 
 // point is a place in the session's whole output, screen and history together.
@@ -174,6 +183,79 @@ func (v *View) Wheel(s *Session, up bool) bool {
 	return true
 }
 
+// Find looks for a query and moves to the last match, which is the one
+// nearest what is on screen — you are usually looking for the most recent
+// thing you saw, not the oldest.
+//
+// It reports how many there are, so an interface can say "none" rather than
+// leaving you wondering whether it looked.
+func (v *View) Find(s *Session, query string) int {
+	if s == nil {
+		return 0
+	}
+	v.find.query = query
+	v.find.matches = s.FindLines(query)
+	v.find.at = len(v.find.matches) - 1
+	if v.find.at < 0 {
+		return 0
+	}
+	v.scrollTo(s, v.find.matches[v.find.at])
+	return len(v.find.matches)
+}
+
+// FindNext moves by delta through the matches, wrapping, and brings the one it
+// lands on into view.
+func (v *View) FindNext(s *Session, delta int) {
+	n := len(v.find.matches)
+	if n == 0 || s == nil {
+		return
+	}
+	v.find.at = ((v.find.at+delta)%n + n) % n
+	v.scrollTo(s, v.find.matches[v.find.at])
+}
+
+// FindClear forgets the query and its matches, leaving the view where it is:
+// you closed the search having found what you wanted, and being thrown back to
+// the bottom would undo that.
+func (v *View) FindClear() { v.find = search{} }
+
+// FindStatus is the query, which match you are on counting from one, and how
+// many there are.
+func (v *View) FindStatus() (string, int, int) {
+	if len(v.find.matches) == 0 {
+		return v.find.query, 0, 0
+	}
+	return v.find.query, v.find.at + 1, len(v.find.matches)
+}
+
+// Matched reports whether a line is one of the matches, and whether it is the
+// one you are on.
+func (v *View) Matched(line int) (match, current bool) {
+	for i, m := range v.find.matches {
+		if m == line {
+			return true, i == v.find.at
+		}
+	}
+	return false, false
+}
+
+// scrollTo puts a line of the whole output into the middle of the window, or
+// as near the middle as the ends allow.
+func (v *View) scrollTo(s *Session, line int) {
+	history := s.History()
+	height := s.Term.Bounds().Dy()
+	// A line's row in the window is line-history+offset, so the offset that
+	// puts it half a screen down is history-line plus that half.
+	want := history - line + height/2
+	if want < 0 {
+		want = 0
+	}
+	if want > history {
+		want = history
+	}
+	v.offset = want
+}
+
 // Draw paints the session through this view.
 func (v *View) Draw(s *Session, scr uv.Screen, area uv.Rectangle) {
 	if s == nil {
@@ -194,14 +276,16 @@ func (v *View) Draw(s *Session, scr uv.Screen, area uv.Rectangle) {
 // reversed still stands out when you select it — the same reason the cursor
 // does it.
 func (v *View) highlight(s *Session, scr uv.Screen, area uv.Rectangle) {
-	if !v.sel.active {
+	if !v.sel.active && len(v.find.matches) == 0 {
 		return
 	}
 	history := s.History()
 	for row := 0; row < area.Dy(); row++ {
 		line := history - v.offset + row
+		match, current := v.Matched(line)
 		for col := 0; col < area.Dx(); col++ {
-			if !v.Selected(line, col) {
+			selected := v.Selected(line, col)
+			if !selected && !match {
 				continue
 			}
 			c := scr.CellAt(area.Min.X+col, area.Min.Y+row)
@@ -209,7 +293,18 @@ func (v *View) highlight(s *Session, scr uv.Screen, area uv.Rectangle) {
 				continue
 			}
 			cell := *c
-			cell.Style.Attrs ^= uv.AttrReverse
+			if selected {
+				cell.Style.Attrs ^= uv.AttrReverse
+			}
+			if match {
+				// A matching line is underlined and the one you are on is
+				// bold as well, so the two say different things without
+				// fighting the selection for the same attribute.
+				cell.Style.Underline = uv.UnderlineSingle
+				if current {
+					cell.Style.Attrs |= uv.AttrBold
+				}
+			}
 			scr.SetCell(area.Min.X+col, area.Min.Y+row, &cell)
 		}
 	}

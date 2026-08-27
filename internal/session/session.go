@@ -340,6 +340,49 @@ func (s *Session) TracksMotion() bool {
 	return s.motion
 }
 
+// FindLines lists the lines of the whole output, history and screen together,
+// that contain the query — as absolute line indices, the same ones the view
+// and the selection use.
+//
+// Case is ignored, because you are looking for something you half remember
+// rather than matching a pattern.
+func (s *Session) FindLines(query string) []int {
+	if query == "" {
+		return nil
+	}
+	want := strings.ToLower(query)
+
+	s.termMu.Lock()
+	defer s.termMu.Unlock()
+
+	history := s.Term.ScrollbackLen()
+	height := s.Term.Bounds().Dy()
+	width := s.Term.Bounds().Dx()
+
+	var out []int
+	var b strings.Builder
+	for line := 0; line < history+height; line++ {
+		b.Reset()
+		for col := 0; col < width; col++ {
+			var cell *uv.Cell
+			if line < history {
+				cell = s.Term.ScrollbackCellAt(col, line)
+			} else {
+				cell = s.Term.CellAt(col, line-history)
+			}
+			if cell == nil || cell.Content == "" {
+				b.WriteByte(' ')
+				continue
+			}
+			b.WriteString(cell.Content)
+		}
+		if strings.Contains(strings.ToLower(b.String()), want) {
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
 // LineText reads part of one line of the whole output, history and screen
 // together, as text.
 //

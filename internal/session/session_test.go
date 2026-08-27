@@ -424,3 +424,80 @@ func TestCallersCallbacksDoNotDropTheSessionsOwn(t *testing.T) {
 		return false
 	})
 }
+
+// The wheel reaches the history; finding something in it is the next thing you
+// want, especially in the output of a service that failed a while ago.
+func TestFindingInTheHistory(t *testing.T) {
+	const w, h = 24, 5
+	s, err := session.Start(session.Spec{
+		ID: "find", Width: w, Height: h,
+		Argv: []string{"sh", "-c",
+			"i=1; while [ $i -le 40 ]; do printf 'line-%03d\\n' $i; i=$((i+1)); done; " +
+				"echo NEEDLE-here; sleep 30"},
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer s.Close()
+	waitFor(t, "the output", func() bool { return anyRowContains(s, w, h, "NEEDLE") })
+	waitFor(t, "the history", func() bool { return s.History() > 30 })
+
+	var v session.View
+	if n := v.Find(s, "line-007"); n != 1 {
+		t.Fatalf("Find found %d lines, want 1", n)
+	}
+	// Case is ignored: you are looking for something half remembered.
+	if n := v.Find(s, "needle-HERE"); n != 1 {
+		t.Errorf("a differently-cased query found %d", n)
+	}
+	if n := v.Find(s, "line-0"); n < 9 {
+		t.Errorf("a query matching many lines found only %d", n)
+	}
+	if n := v.Find(s, "not-in-there"); n != 0 {
+		t.Errorf("Find invented %d matches", n)
+	}
+
+	// Finding scrolls to the match, and what is drawn shows it.
+	v.Find(s, "line-007")
+	if got := scrolled(s, w, h, v.Offset()); !strings.Contains(got, "line-007") {
+		t.Errorf("the match is not on screen:\n%s", got)
+	}
+	if _, at, total := v.FindStatus(); at != 1 || total != 1 {
+		t.Errorf("FindStatus = %d of %d", at, total)
+	}
+
+	// Moving through matches wraps rather than stopping at the end.
+	v.Find(s, "line-01")
+	_, _, total := v.FindStatus()
+	if total < 2 {
+		t.Fatalf("this test needs several matches, found %d", total)
+	}
+	first := v.Offset()
+	v.FindNext(s, 1)
+	if v.Offset() == first && total > 1 {
+		t.Error("moving to the next match did not move the view")
+	}
+	_, before, _ := v.FindStatus()
+	for i := 0; i < total; i++ {
+		v.FindNext(s, 1)
+	}
+	if _, at, _ := v.FindStatus(); at != before {
+		t.Errorf("a full turn through %d matches went from %d to %d", total, before, at)
+	}
+	// And backwards wraps too.
+	v.FindNext(s, -1)
+	if _, at, _ := v.FindStatus(); at == before {
+		t.Errorf("going back stayed on match %d", at)
+	}
+
+	// Closing the search leaves the view where it is: you found what you
+	// wanted, and being thrown back to the bottom would undo that.
+	was := v.Offset()
+	v.FindClear()
+	if v.Offset() != was {
+		t.Errorf("closing the search moved the view from %d to %d", was, v.Offset())
+	}
+	if _, _, total := v.FindStatus(); total != 0 {
+		t.Errorf("closing the search kept %d matches", total)
+	}
+}

@@ -53,6 +53,7 @@ func (a *App) buildStatusBar() []button {
 		{"? help", func(a *App) { a.overlay = overlayHelp }, false},
 		{"⚙ set", func(a *App) { a.toggleSettingsPanel() }, false},
 		{"⌘ cmd", func(a *App) { a.togglePalette() }, false},
+		{"⌕ find", func(a *App) { a.toggleFind() }, false},
 		{"▣ zoom", func(a *App) { a.toggleZoom() }, false},
 		{"⇄ flip", func(a *App) { a.rotateFocusedSplit() }, false},
 		{"≡ equal", func(a *App) { a.evenOutSplits() }, false},

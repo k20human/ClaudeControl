@@ -421,6 +421,44 @@ func (m *Module) Sessions() []string {
 	return out
 }
 
+// finder is what a pane must offer for its history to be searched.
+type finder interface {
+	Find(string) int
+	FindNext(int)
+	FindClear()
+	FindStatus() (string, int, int)
+}
+
+// Find, FindNext, FindClear and FindStatus reach the tab on screen. Searching
+// a tab you are not looking at would move a view you cannot see.
+func (m *Module) Find(query string) int {
+	f, ok := m.Active().(finder)
+	if !ok {
+		return 0
+	}
+	return f.Find(query)
+}
+
+func (m *Module) FindNext(delta int) {
+	if f, ok := m.Active().(finder); ok {
+		f.FindNext(delta)
+	}
+}
+
+func (m *Module) FindClear() {
+	if f, ok := m.Active().(finder); ok {
+		f.FindClear()
+	}
+}
+
+func (m *Module) FindStatus() (string, int, int) {
+	f, ok := m.Active().(finder)
+	if !ok {
+		return "", 0, 0
+	}
+	return f.FindStatus()
+}
+
 // SelectedText is what is selected in the tab on screen.
 func (m *Module) SelectedText() string {
 	s, ok := m.Active().(interface{ SelectedText() string })

@@ -451,6 +451,12 @@ func TestEveryInterfaceTheApplicationLooksForIsPassedThrough(t *testing.T) {
 		{"ScrollOffset", implements[interface{ ScrollOffset() int }](m)},
 		{"SelectedText", implements[interface{ SelectedText() string }](m)},
 		{"Sessions", implements[module.Sessioner](m)},
+		{"Find", implements[interface {
+			Find(string) int
+			FindNext(int)
+			FindClear()
+			FindStatus() (string, int, int)
+		}](m)},
 		{"Values", implements[interface{ Values() map[string]any }](m)},
 		{"Title", implements[interface{ Title() (string, bool) }](m)},
 		{"Cursor", implements[module.Cursorer](m)},

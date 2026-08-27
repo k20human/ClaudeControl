@@ -52,6 +52,7 @@ func (a *App) menuItems() []menuItem {
 	return []menuItem{
 		{"copy", clip, (*App).copySelection},
 		{"paste", clip, (*App).pasteFromClipboard},
+		{"find", "alt+:", (*App).toggleFind},
 		{"new session", "alt+n", func(a *App) { _ = a.newPane(layout.Horizontal) }},
 		{"close pane", "alt+x", func(a *App) { _ = a.closePane(a.focus) }},
 		{"zoom", "alt+z", (*App).toggleZoom},

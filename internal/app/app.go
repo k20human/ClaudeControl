@@ -101,6 +101,10 @@ type App struct {
 	// menu the terminal would otherwise have shown.
 	menu *menuState
 
+	// find is the open search, if any. It names the pane it searches: what
+	// you are looking for is in that pane's history.
+	find *findState
+
 	// clipboardAsked is when the terminal was last asked for the clipboard
 	// over OSC 52, so its silence can be reported rather than waited on.
 	clipboardAsked time.Time
@@ -548,6 +552,7 @@ func (a *App) draw() {
 	a.drawSessionPanel(a.scr)
 	a.drawSettingsPanel(a.scr)
 	a.drawPaneDrag(a.scr)
+	a.drawFind(a.scr)
 	a.drawMenu(a.scr)
 	a.drawPalette(a.scr)
 	a.drawOverlay(a.scr)
@@ -561,7 +566,7 @@ func (a *App) draw() {
 // one is open the cursor has no business being shown.
 func (a *App) cursorTarget() (x, y int, visible bool) {
 	if a.overlay != overlayNone || a.sessionPanel != nil || a.settingsPanel != nil ||
-		a.palette != nil || a.menu != nil {
+		a.palette != nil || a.menu != nil || a.find != nil {
 		return 0, 0, false
 	}
 	m, ok := a.modules[a.focus]

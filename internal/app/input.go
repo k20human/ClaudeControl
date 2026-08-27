@@ -49,6 +49,10 @@ var bindings = []binding{
 	// which was found by trying alt+= and watching nothing happen.
 	{[]string{"alt+;"}, "alt+;", "previous tab", func(a *App) { a.cycleTab(-1) }},
 	{[]string{"alt+'"}, "alt+'", "next tab", func(a *App) { a.cycleTab(1) }},
+	// Free in the Claude Code binary, meaningless as an escape sequence, not a
+	// readline binding — alt+b and alt+f move by word in every shell — and
+	// unshifted on an AZERTY keyboard.
+	{[]string{"alt+:"}, "alt+:", "find in this pane", func(a *App) { a.toggleFind() }},
 	{[]string{"alt+g"}, "alt+g", "this panel", func(a *App) { a.overlay = overlayHelp }},
 	{[]string{"alt+q"}, "alt+q", "quit", func(a *App) { a.overlay = overlayQuit }},
 }
@@ -113,6 +117,9 @@ func (a *App) cycleTab(delta int) {
 
 func (a *App) handleKey(e uv.KeyPressEvent) {
 	if a.menuKey(e) {
+		return
+	}
+	if a.findKey(e) {
 		return
 	}
 

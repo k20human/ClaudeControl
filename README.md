@@ -436,6 +436,7 @@ actually working** — an idle window stays idle.
 | `alt+m` / `alt+s` | flip a split / reset every split to equal shares |
 | `alt+r` | pick this pane up, then click where it lands |
 | `alt+;` / `alt+'` | previous tab, next tab, in a pane of tabs |
+| `alt+:` | find in this pane |
 | `alt+space` / `alt+,` / `alt+/` | sessions, settings, command palette |
 | `alt+g` / `alt+q` | help, quit |
 
@@ -463,6 +464,28 @@ for shortcuts.
 **Right-click → paste** needs the same clipboard tool as copy, for the same
 reason: a terminal application has no way of its own to reach the clipboard.
 See *Selecting and copying* below.
+
+## Finding something in a pane
+
+`alt+:`, the `⌕ find` button in the bar, or `find` in the right-click menu.
+Type and the matches appear as you go, counted on the right (`3/17`) or told
+plainly that there are `none` — a search that looked and found nothing must
+not look like a search that never ran.
+
+`enter` and `↓` move to the next match, `↑` to the previous, both wrapping.
+Each brings its match half a screen down so you can see what surrounds it.
+Matching lines are underlined and the one you are on is bold, which leaves the
+inverted video to the selection. Escape closes the search **where it left
+you**: you found what you wanted, and being thrown back to the bottom would
+undo that.
+
+While the bar is open every key belongs to it. A query is text, and a letter
+that reached the guest would be a letter missing from what you meant to find.
+
+The shortcut is `alt+:` for three reasons, each checked: it is absent from the
+Claude Code binary, it means nothing as an escape sequence, and it is not a
+readline binding — `alt+b` and `alt+f` move by word in every shell this can
+host.
 
 ## Selecting and copying
 

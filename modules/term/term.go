@@ -232,6 +232,19 @@ func (m *Module) Mouse(e uv.MouseEvent) {
 	m.sess.SendMouse(e)
 }
 
+// Find looks for a query in this pane's whole output and moves to the nearest
+// match, reporting how many there are.
+func (m *Module) Find(query string) int { return m.view.Find(m.sess, query) }
+
+// FindNext moves through the matches, wrapping.
+func (m *Module) FindNext(delta int) { m.view.FindNext(m.sess, delta) }
+
+// FindClear forgets the query, leaving the view where the search left it.
+func (m *Module) FindClear() { m.view.FindClear() }
+
+// FindStatus is the query, which match you are on, and how many there are.
+func (m *Module) FindStatus() (string, int, int) { return m.view.FindStatus() }
+
 // SelectedText is what is selected in this pane, or empty.
 func (m *Module) SelectedText() string { return m.view.SelectedText(m.sess) }
 
