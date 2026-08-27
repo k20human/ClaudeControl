@@ -48,6 +48,7 @@ ready-made files in [`examples/`](examples) to copy from:
 | `local-stack.yaml` | A session beside the services it works on |
 | `two-claude.yaml` | Two Claude sessions side by side |
 | `shells.yaml` | Plain terminals, no Claude |
+| `tabs.yaml` | Two panes of tabs, for a narrow window |
 | `hologram.yaml` | The animated panel on its own |
 
 ```sh

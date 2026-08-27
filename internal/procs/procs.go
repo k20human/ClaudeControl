@@ -39,8 +39,14 @@ type Proc struct {
 
 // Owned reports whether the process leads its own group, which is true of
 // everything started on a pseudo-terminal and false of anything launched from
-// a shell. It decides how the process can be stopped: a group its shell also
-// belongs to must never be signalled wholesale.
+// a shell.
+//
+// Nothing branches on it: Terminate walks the subtree either way, because a
+// process found rather than started cannot be trusted to lead its own group
+// and being wrong would mean signalling the terminal someone is working in.
+// It exists so a test can state which of the two cases it is exercising —
+// a subtree walk that was only ever tried on a group leader would prove
+// nothing about the dangerous one.
 func (p Proc) Owned() bool { return p.PGID == p.Pid }
 
 // Alive reports whether the process is still running and still the same one.

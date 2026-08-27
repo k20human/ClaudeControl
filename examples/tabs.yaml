@@ -1,0 +1,36 @@
+# One pane of conversations, one pane of everything you watch while they run.
+# For a window with no room to split again.
+#
+# Run with: ./bin/claudecontrol -config examples/tabs.yaml
+#
+#   alt+a       open a tab in the pane you are in
+#   alt+x       close the one in front of you, or the pane with its last tab
+#   alt+; alt+' move between them
+#
+# The + and × in the strip do the same with the mouse.
+layout:
+  split: horizontal
+  ratios: [3, 2]
+  children:
+    - module: tabs
+      options:
+        tabs:
+          - title: claude
+            module: claude
+            options:
+              dir: ~/GolandProjects/ClaudeControl
+
+    - module: tabs
+      options:
+        tabs:
+          - title: brain
+            module: hologram
+            options: { style: sphere, readout: right }
+          - title: usage
+            module: stats
+          - title: services
+            module: services
+            options:
+              interval: 5
+              checks:
+                - { name: network, cmd: [sh, -c, "ip route | grep -q default"] }
