@@ -146,7 +146,16 @@ the application has written to it.
 open, in the order their panes appear, and the next run hands them out in that
 order — each pane starts with `--resume` on the conversation it had. A session
 that was opened and never spoken to has no transcript and is quietly dropped:
-resuming it would fail with an error about something you did not do. Rearrange
+resuming it would fail with an error about something you did not do.
+
+What is recorded is the conversation **Claude Code is running now**, which is
+not always the one the pane started with. Resuming — from here or with
+`/resume` inside the session — makes Claude Code write a new transcript under
+a new id, and the id we handed it stops describing anything. The hooks say
+which pane they came from on their own command line, so the pane's identity
+never moves while Claude Code's does, and everything keyed on it — the state
+mark, the token counts, the conversation to bring back — keeps describing
+what is actually there. Rearrange
 the panes between runs and a conversation lands in a different one, which is
 predictable and far better than losing it. A `resume` written here by hand
 always wins: it was put there on purpose.

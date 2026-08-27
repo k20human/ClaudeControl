@@ -51,6 +51,10 @@ type App struct {
 	usage   map[string]transcript.Metrics
 	names   map[string]string
 
+	// live maps a pane's own session id to the one Claude Code is using for
+	// it now. They differ from the moment a conversation is resumed.
+	live map[string]string
+
 	// binary is our own executable, which sessions invoke in --hook mode.
 	binary string
 
@@ -293,18 +297,61 @@ func (a *App) moduleContext(id layout.PaneID) module.Context {
 // pumpHooks turns hook payloads into session states.
 func (a *App) pumpHooks() {
 	for p := range a.hooks.Events() {
+		// Keyed by the pane rather than by the payload's session id, because
+		// the two part company: resuming a conversation makes Claude Code
+		// write a new transcript under a new id, and everything keyed on the
+		// old one — the state mark, the token counts, the conversation to
+		// bring back — quietly stops describing anything.
+		//
+		// The pane's own id is on the hook's command line and never moves.
+		// Older hooks, registered before a session was restarted, carry none;
+		// falling back on the payload keeps them working.
+		key := p.Pane
+		if key == "" {
+			key = p.SessionID
+		}
+		if p.Pane != "" && p.SessionID != "" {
+			a.noteLiveSession(p.Pane, p.SessionID)
+		}
+
 		// The payload is the only authority on where a transcript lives: the
 		// folder name derives from the working directory, two sessions can
 		// share one, and a session can be relocated.
-		a.followTranscript(p.SessionID, p.TranscriptPath)
+		a.followTranscript(key, p.TranscriptPath)
 
 		st, ok := pool.StateForHook(p.Event)
 		if !ok {
 			continue
 		}
-		a.pool.SetState(session.ID(p.SessionID), st)
+		a.pool.SetState(session.ID(key), st)
 		a.Wake()
 	}
+}
+
+// noteLiveSession records what Claude Code is currently calling a pane's
+// conversation, which is what a later run has to resume.
+func (a *App) noteLiveSession(pane, live string) {
+	a.usageMu.Lock()
+	if a.live == nil {
+		a.live = make(map[string]string)
+	}
+	changed := a.live[pane] != live
+	a.live[pane] = live
+	a.usageMu.Unlock()
+	if changed {
+		a.Wake()
+	}
+}
+
+// liveSession is the conversation actually running behind a pane, which is the
+// one we started until Claude Code says otherwise.
+func (a *App) liveSession(pane string) string {
+	a.usageMu.RLock()
+	defer a.usageMu.RUnlock()
+	if live, ok := a.live[pane]; ok && live != "" {
+		return live
+	}
+	return pane
 }
 
 // Wake asks for a repaint. It never blocks: a full channel already means a

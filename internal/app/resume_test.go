@@ -191,3 +191,38 @@ func (s *sessionHolder) Resize(int, int) error        { return nil }
 func (s *sessionHolder) Draw(uv.Screen, uv.Rectangle) {}
 func (s *sessionHolder) Close() error                 { return nil }
 func (s *sessionHolder) Sessions() []string           { return s.ids }
+
+// Resuming a conversation makes Claude Code write a new transcript under a new
+// id. What a later run has to resume is that new one, not the id the pane was
+// started with — which is how a resumed conversation came back as nothing.
+func TestTheSnapshotRecordsWhatClaudeCodeCallsItNow(t *testing.T) {
+	state := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", state)
+
+	a := &App{
+		modules:     map[layout.PaneID]module.Module{},
+		moduleNames: map[layout.PaneID]string{},
+		root:        &layout.Node{Kind: layout.KindLeaf, PaneID: 1},
+	}
+	a.modules[1] = &sessionHolder{ids: []string{"ours"}}
+
+	a.saveSnapshot()
+	got, _ := LoadSnapshot(SnapshotPath())
+	if len(got.Sessions) != 1 || got.Sessions[0] != "ours" {
+		t.Fatalf("before any hook: %v", got.Sessions)
+	}
+
+	// A hook arrives naming the pane, and saying Claude Code has moved on.
+	a.noteLiveSession("ours", "claude-made-a-new-one")
+	a.saveSnapshot()
+	got, _ = LoadSnapshot(SnapshotPath())
+	if len(got.Sessions) != 1 || got.Sessions[0] != "claude-made-a-new-one" {
+		t.Errorf("after the hook: %v, want the conversation that is actually running", got.Sessions)
+	}
+
+	// A pane no hook has spoken for keeps its own id, which is the one it was
+	// started with and the one there is to resume.
+	if got := a.liveSession("never-heard-of"); got != "never-heard-of" {
+		t.Errorf("liveSession invented %q", got)
+	}
+}

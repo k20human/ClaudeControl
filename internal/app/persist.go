@@ -111,7 +111,11 @@ func (a *App) saveSnapshot() {
 		if !ok {
 			continue
 		}
-		snap.Sessions = append(snap.Sessions, lister.Sessions()...)
+		for _, id := range lister.Sessions() {
+			// What Claude Code is calling it now, which is what there will be
+			// to resume — not the id we handed it when it started.
+			snap.Sessions = append(snap.Sessions, a.liveSession(id))
+		}
 	}
 	if sameStrings(a.savedSessions, snap.Sessions) {
 		return

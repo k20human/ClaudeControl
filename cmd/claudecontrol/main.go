@@ -23,6 +23,7 @@ import (
 
 func main() {
 	hook := flag.String("hook", "", "internal: forward a Claude Code hook payload and exit")
+	pane := flag.String("pane", "", "internal: which pane's session the hook belongs to")
 	cfgPath := flag.String("config", config.Path(), "path to the configuration file")
 	flag.Parse()
 
@@ -35,7 +36,7 @@ func main() {
 		if socket == "" {
 			os.Exit(0)
 		}
-		_ = hooks.Send(socket, *hook, os.Stdin)
+		_ = hooks.Send(socket, *hook, *pane, os.Stdin)
 		os.Exit(0)
 	}
 

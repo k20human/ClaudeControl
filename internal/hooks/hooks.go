@@ -33,6 +33,14 @@ type Payload struct {
 	Cwd            string `json:"cwd"`
 	TranscriptPath string `json:"transcript_path"`
 	PermissionMode string `json:"permission_mode"`
+
+	// Pane is the identity this application gave the session when it started
+	// it. It travels on the hook's own command line rather than in the
+	// payload, because the payload's session id is Claude Code's and Claude
+	// Code changes it: resuming a conversation writes a new transcript under a
+	// new id, so the id we started with stops describing what is running.
+	// This one never moves.
+	Pane string `json:"pane,omitempty"`
 }
 
 // Listener accepts hook connections.
@@ -114,7 +122,7 @@ func (l *Listener) Close() error {
 }
 
 // Send delivers one payload. It is what --hook mode calls.
-func Send(socket, event string, stdin io.Reader) error {
+func Send(socket, event, pane string, stdin io.Reader) error {
 	body, err := io.ReadAll(io.LimitReader(stdin, 1<<20))
 	if err != nil {
 		return fmt.Errorf("hooks: read payload: %w", err)
@@ -124,6 +132,7 @@ func Send(socket, event string, stdin io.Reader) error {
 	// moved is worth more than knowing nothing because a field changed shape.
 	_ = json.Unmarshal(body, &p)
 	p.Event = event
+	p.Pane = pane
 
 	line, err := json.Marshal(p)
 	if err != nil {
@@ -152,7 +161,7 @@ var hookEvents = []string{
 // It carries hooks and nothing else. --settings merges with the user's own
 // configuration rather than replacing it, so anything extra here would quietly
 // override a real preference.
-func SettingsJSON(binary, socket string) (string, error) {
+func SettingsJSON(binary, socket, pane string) (string, error) {
 	type cmd struct {
 		Type    string `json:"type"`
 		Command string `json:"command"`
@@ -165,7 +174,7 @@ func SettingsJSON(binary, socket string) (string, error) {
 	for _, e := range hookEvents {
 		registered[e] = []group{{Hooks: []cmd{{
 			Type:    "command",
-			Command: fmt.Sprintf("%s --hook %s", binary, e),
+			Command: fmt.Sprintf("%s --hook %s --pane %s", binary, e, pane),
 		}}}}
 	}
 	b, err := json.Marshal(map[string]any{"hooks": registered})

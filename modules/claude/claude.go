@@ -139,7 +139,7 @@ func (m *Module) Resize(w, h int) error {
 	argv := Argv(m.binary, m.id, m.resume, m.extra)
 	var env []string
 	if m.ctx.HookSocket != "" && m.ctx.Binary != "" {
-		settings, err := hooks.SettingsJSON(m.ctx.Binary, m.ctx.HookSocket)
+		settings, err := hooks.SettingsJSON(m.ctx.Binary, m.ctx.HookSocket, m.SessionID())
 		if err != nil {
 			return err
 		}
