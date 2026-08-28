@@ -53,6 +53,23 @@ func (m *Module) Draw(scr uv.Screen, area uv.Rectangle) {
 	m.drawList(scr, area)
 }
 
+// hitLocked records a clickable region, pane-local.
+//
+// Pane-local, because that is how the pointer arrives: the application
+// translates a click into the pane's own coordinates before the module ever
+// sees it, and a pane of tabs shifts it again past the strip. Everything is
+// drawn in screen coordinates, so every region has to be brought back — which
+// is why this exists rather than three call sites each remembering to subtract
+// the same two numbers.
+func (m *Module) hitLocked(area uv.Rectangle, x, y, w int, run func(*Module)) {
+	m.hits = append(m.hits, hit{
+		x:   x - area.Min.X,
+		y:   y - area.Min.Y,
+		w:   w,
+		run: run,
+	})
+}
+
 // drawList paints the buttons and one row per service.
 func (m *Module) drawList(scr uv.Screen, area uv.Rectangle) {
 	m.mu.Lock()
@@ -74,7 +91,7 @@ func (m *Module) drawList(scr uv.Screen, area uv.Rectangle) {
 			break
 		}
 		render.Text(scr, x, y, " "+b.label+" ", fgHot, bgRule)
-		m.hits = append(m.hits, hit{x: x, y: y, w: w, run: b.run})
+		m.hitLocked(area, x, y, w, b.run)
 		x += w + 1
 	}
 
@@ -140,11 +157,11 @@ func (m *Module) drawRow(scr uv.Screen, area uv.Rectangle, y, i int, s *service,
 	x := area.Min.X + 1
 	render.Text(scr, x, y, box, fgHot, bg)
 	idx := i
-	m.hits = append(m.hits, hit{x: x, y: y, w: 3, run: func(m *Module) { m.toggle(idx) }})
+	m.hitLocked(area, x, y, 3, func(m *Module) { m.toggle(idx) })
 	x += 4
 
 	render.Text(scr, x, y, fmt.Sprintf("%-*s", nameW, clip(s.spec.Name, nameW)), fgText, bg)
-	m.hits = append(m.hits, hit{x: x, y: y, w: nameW, run: func(m *Module) { m.show(idx) }})
+	m.hitLocked(area, x, y, nameW, func(m *Module) { m.show(idx) })
 	x += nameW + 1
 
 	fg := color.Color(fgMuted)
@@ -186,10 +203,7 @@ func (m *Module) drawLogs(scr uv.Screen, area uv.Rectangle, i int) {
 	adopted := s.adopted
 	title := fmt.Sprintf("logs · %s", s.spec.Name)
 	state := s.state
-	m.hits = append(m.hits, hit{
-		x: area.Min.X + 1, y: area.Min.Y, w: 6,
-		run: func(m *Module) { m.show(-1) },
-	})
+	m.hitLocked(area, area.Min.X+1, area.Min.Y, 6, func(m *Module) { m.show(-1) })
 	m.mu.Unlock()
 
 	y := area.Min.Y
