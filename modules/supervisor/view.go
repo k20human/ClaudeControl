@@ -180,12 +180,49 @@ func (m *Module) drawRow(scr uv.Screen, area uv.Rectangle, y, i int, s *service,
 		}
 	case Exited:
 		fg = fgDown
-		detail = fmt.Sprintf("code %-6d %s ago", s.code, forHowLong(s.since))
+		detail = fmt.Sprintf("%-11s %s ago", endedAs(s.code), forHowLong(s.since))
+		if s.left > 0 {
+			// Worth the width it costs: a launcher that died and left the
+			// server it started holding its port. "exited" is true of the
+			// process and false of the service, and only this says which.
+			// The survivor count comes before the time because a narrow pane
+			// clips from the right, and of the three facts here the time is
+			// the one you can most afford to lose.
+			detail = fmt.Sprintf("%s · %d left · %s ago",
+				endedAs(s.code), s.left, forHowLong(s.since))
+		}
 	}
 	render.Text(scr, x, y, fmt.Sprintf("%-*s", stateW, s.state), fg, bg)
 	if x+stateW+1 < area.Max.X {
 		render.Text(scr, x+stateW+1, y, clip(detail, area.Max.X-x-stateW-1), fgMuted, bg)
 	}
+}
+
+// endedAs says how a process ended.
+//
+// A shell, and npm with it, reports a process ended by a signal as 128 plus
+// the signal number. Printed as a number it reads like a failure; named, it
+// says that something stopped the service rather than that the service broke.
+// Outside that range the number is the program's own and is left alone.
+func endedAs(code int) string {
+	if name, ok := signalNames[code-128]; ok {
+		return name
+	}
+	return fmt.Sprintf("code %d", code)
+}
+
+// signalNames covers the signals a supervised process actually meets: the ones
+// this application sends, and the ones a machine sends it. A number nobody can
+// name is more honest as a number.
+var signalNames = map[int]string{
+	1:  "SIGHUP",
+	2:  "SIGINT",
+	3:  "SIGQUIT",
+	6:  "SIGABRT",
+	9:  "SIGKILL",
+	11: "SIGSEGV",
+	13: "SIGPIPE",
+	15: "SIGTERM",
 }
 
 // drawLogs paints one service's output, exactly as it wrote it.

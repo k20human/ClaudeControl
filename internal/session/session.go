@@ -174,9 +174,18 @@ func (s *Session) pumpOutput() {
 	code := 0
 	if err := s.cmd.Wait(); err != nil {
 		var ee *exec.ExitError
-		if errors.As(err, &ee) {
+		switch {
+		case errors.As(err, &ee):
 			code = ee.ExitCode()
-		} else {
+			// A process killed by a signal has no exit status of its own, and
+			// ExitCode reports -1 — a number that tells a reader nothing. The
+			// convention every shell uses is 128 plus the signal, which is
+			// also what a program that handles the signal itself reports, so
+			// both deaths arrive here in the same shape.
+			if ws, ok := ee.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+				code = 128 + int(ws.Signal())
+			}
+		default:
 			code = -1
 		}
 	}

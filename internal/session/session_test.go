@@ -501,3 +501,37 @@ func TestFindingInTheHistory(t *testing.T) {
 		t.Errorf("closing the search kept %d matches", total)
 	}
 }
+
+// A process killed by a signal has no exit status of its own: ExitCode reports
+// -1, a number that tells a reader nothing. The convention every shell uses is
+// 128 plus the signal, which is also what a program that handles the signal
+// itself reports — so both deaths arrive in the same shape.
+func TestASignalDeathIsReportedAsOneTwentyEightPlusTheSignal(t *testing.T) {
+	s, err := session.Start(session.Spec{
+		ID: "signalled", Argv: []string{"sleep", "300"}, Dir: ".",
+		Width: 20, Height: 5,
+	})
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) && s.Pid() <= 0 {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err := syscall.Kill(s.Pid(), syscall.SIGKILL); err != nil {
+		t.Fatalf("kill: %v", err)
+	}
+
+	for time.Now().Before(deadline) {
+		if st, code := s.Status(); st == session.Exited {
+			if want := 128 + int(syscall.SIGKILL); code != want {
+				t.Fatalf("code = %d, want %d", code, want)
+			}
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("the session never reported the death")
+}

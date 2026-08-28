@@ -209,8 +209,21 @@ usual set rather than everything that exists. Declaring it alongside
 `autostart` is refused rather than resolved quietly — one says launch it now,
 the other says leave it out.
 
-**A service that dies stays dead**, showing its exit code. Resurrecting it
-would hide the failure behind a row reading `running` while nothing works.
+**A service that dies stays dead**, showing how it died. Resurrecting it would
+hide the failure behind a row reading `running` while nothing works. A death by
+signal is named — `SIGTERM` rather than `code 143` — because a number in that
+range reads like a failure when it means that something stopped the service.
+
+**And it says what the service left behind.** `npm run dev` is a launcher, not
+the server; kill the launcher and the server can keep its port. The scan
+records what each service has started while it is still there to be asked, so a
+row that ends can report `SIGTERM · 1 left · 2m ago` — "exited" being true of
+the process and false of the service, and only this saying which.
+
+**A service that ended and is running again is adopted**, which it was not:
+the scan skipped anything holding a session, and a service that ends keeps its
+session so its output stays readable. The row then claimed `exited` for as long
+as the pane was open and no amount of scanning could correct it.
 
 **Services already running are adopted.** The module walks `/proc` every five
 seconds, and on demand with `⟲ scan`, and takes over any process whose working

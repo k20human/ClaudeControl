@@ -83,6 +83,18 @@ type service struct {
 	// matters most for the four hundred lines a restart brings back.
 	view session.View
 
+	// tree is what this service had started, last time anything looked, and
+	// left is how many of those were still alive after it ended.
+	//
+	// A launcher — npm run dev, and most of what a stack is made of — is not
+	// the server. Kill the launcher and the server keeps its port, which is
+	// the state that makes a row reading "exited" so misleading: true of the
+	// process, and false of the service. Sampled while it runs because by the
+	// time it has ended its children have been re-parented and there is
+	// nothing left to walk down to.
+	tree []int
+	left int
+
 	// carry is what the previous run printed, put back on the screen when the
 	// next one starts. A restart usually happens because of something the
 	// service said, and losing that at the moment you act on it is the worst
@@ -239,7 +251,7 @@ func (m *Module) Scan() {
 	m.mu.Lock()
 	wanted := false
 	for _, s := range m.svcs {
-		if s.sess == nil && s.adopted == nil && s.spec.Dir != "" {
+		if m.adoptableLocked(s) || (s.sess != nil && s.state == Running) {
 			wanted = true
 			break
 		}
@@ -255,10 +267,21 @@ func (m *Module) Scan() {
 		return
 	}
 
+	children := map[int][]int{}
+	for _, p := range all {
+		children[p.PPID] = append(children[p.PPID], p.Pid)
+	}
+
 	m.mu.Lock()
 	changed := false
 	for _, s := range m.svcs {
-		if s.sess != nil || s.adopted != nil || s.spec.Dir == "" {
+		// What it has started, while it is still there to be asked.
+		if s.sess != nil && s.state == Running {
+			if pid := s.sess.Pid(); pid > 0 {
+				s.tree = descend(children, pid)
+			}
+		}
+		if !m.adoptableLocked(s) {
 			continue
 		}
 		for i := range all {
@@ -266,7 +289,15 @@ func (m *Module) Scan() {
 				continue
 			}
 			found := all[i]
-			s.adopted, s.state, s.since = &found, Running, time.Now()
+			// A session that has ended is dropped, its output kept: the row is
+			// about to describe a process this application did not start, and
+			// two accounts of one service on one row is one too many.
+			if s.sess != nil {
+				m.captureLocked(s)
+				_ = s.sess.Close()
+				s.sess = nil
+			}
+			s.adopted, s.state, s.since, s.left = &found, Running, time.Now(), 0
 			changed = true
 			break
 		}
@@ -276,6 +307,31 @@ func (m *Module) Scan() {
 	if changed && m.ctx.Wake != nil {
 		m.ctx.Wake()
 	}
+}
+
+// adoptableLocked reports whether a service could take over a process found
+// running.
+//
+// Not while it holds one of its own, and not while it holds a live session.
+// But a session that has ended is no bar: the service is not running, whatever
+// the row still says, and a matching process out there is the truth. Without
+// this an ended service could never be noticed alive again, and the scan
+// button had nothing to correct.
+func (m *Module) adoptableLocked(s *service) bool {
+	if s.adopted != nil || s.spec.Dir == "" {
+		return false
+	}
+	return s.sess == nil || s.state == Exited
+}
+
+// descend collects a process and everything under it, from an index built once
+// for the whole walk.
+func descend(children map[int][]int, pid int) []int {
+	out := []int{pid}
+	for i := 0; i < len(out); i++ {
+		out = append(out, children[out[i]]...)
+	}
+	return out[1:]
 }
 
 // matches reports whether a process is this service, by what it runs and where.
@@ -367,8 +423,20 @@ func (m *Module) refreshLocked() {
 		}
 		if st, code := s.sess.Status(); st == session.Exited {
 			s.state, s.code, s.since = Exited, code, time.Now()
+			s.left = stillAlive(s.tree)
 		}
 	}
+}
+
+// stillAlive counts how many of these processes are still there.
+func stillAlive(pids []int) int {
+	n := 0
+	for _, pid := range pids {
+		if p, err := procs.Read(pid); err == nil && p.Alive() {
+			n++
+		}
+	}
+	return n
 }
 
 // startLocked launches a service that is not already up.
@@ -405,6 +473,7 @@ func (m *Module) startLocked(s *service) {
 		s.state, s.code, s.since = Exited, -1, time.Now()
 		return
 	}
+	s.tree, s.left = nil, 0
 	replay(sess, s.carry, w)
 	// The offset belonged to a screen that no longer exists. Keeping it would
 	// open the new run somewhere in the middle of the old one.
@@ -540,6 +609,11 @@ type Snapshot struct {
 	// Adopted marks a process this application did not start. It can be
 	// watched and stopped; its output cannot be read.
 	Adopted bool
+
+	// Children is how many processes this service had started, last time
+	// anything looked. Left is how many of those outlived it.
+	Children int
+	Left     int
 }
 
 // Services is the current state of every configured service.
@@ -552,6 +626,7 @@ func (m *Module) Services() []Snapshot {
 		snap := Snapshot{
 			Name: s.spec.Name, State: s.state, Code: s.code,
 			Since: s.since, Picked: s.picked,
+			Children: len(s.tree), Left: s.left,
 		}
 		switch {
 		case s.sess != nil:
