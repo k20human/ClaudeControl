@@ -191,6 +191,7 @@ a command **once**, `services` asks whether something already running
 ```yaml
 - module: supervisor
   options:
+    keep_running: false      # do services outlive the application, default false
     stop_grace: 5            # seconds before SIGKILL, default 5
     services:
       - name: api            # required
@@ -244,14 +245,39 @@ in its place, under a line saying it is not live. It is kept as plain text: the
 colours and the cursor moves are dropped, because a record that could still
 move the cursor is not a record.
 
+**`keep_running: true` makes services outlive the application**, and come back
+with their output when you open it again.
+
+It is not a matter of declining to stop them. A service left writing into a
+terminal nobody is draining does not die — it **blocks**: the buffer fills,
+about seventy thousand lines on this machine, and the next write waits for
+ever. The service then holds its port, answers nothing, and says nothing about
+it, which is worse than having been stopped.
+
+So a small process stays behind. `claudecontrol --relay` stands in its own
+session, owns the terminal the service writes to, and empties it into a file.
+The service sees a terminal like any other — colours, progress bars, the width
+of your pane — and the file holds those bytes exactly as they arrived, escape
+sequences included. The pane pours that file back through its emulator, which
+is why the colours are still there.
+
+Opening the application again finds each relay and attaches to it: the row
+reads `running`, the pid is the one that was already there, and the log is the
+same log. That is the one thing a service adopted from a bare process cannot
+offer.
+
+A kept service cannot be typed into — there is no path from your keyboard to a
+terminal somebody else owns — and its log is capped at 8 MB, kept from the end.
+
 **Stopping signals the whole process tree, never the process group.**
 `npm run dev` is a launcher whose real server is one of its children, and
 signalling only the child leaves that server holding its port. A service
 adopted from a shell also shares that shell's process group, so signalling the
 group would kill the terminal you are sitting in.
 
-In the pane: click a name for its output, or a checkbox to tick it. **The wheel
-reaches the log's history**, which is how you get to the lines a restart
+In the pane: click a name for its output, or a checkbox to tick it. **Drag
+across a log to select it**, then `alt+c` — a log is text you read, and text you
+read is text you copy. **The wheel reaches the log's history**, which is how you get to the lines a restart
 brought back. From the keyboard, `↑ ↓` moves, `space` ticks, `a` ticks
 everything or nothing, `enter` opens the output, and `s` `r` `x` start, restart
 and stop the ticked ones.
@@ -655,10 +681,13 @@ copying.
 
 # What it deliberately does not do
 
-- **No detaching.** Closing the application ends the processes it started.
-  Adopted services survive it; supervised services do not. Conversations come
-  back on the next run (see below), but as new processes reading the same
-  transcript rather than the ones you left running.
+- **No detaching, unless a service asks for it.** Closing the application ends
+  the processes it started, and adopted services survive it. A supervisor
+  configured with `keep_running: true` is the exception: its services run under
+  a relay that outlives the application, and are found again on the next run.
+  Conversations are not detachable at all — they come back on the next run (see
+  below), but as new processes reading the same transcript rather than the ones
+  you left running.
 - **No monetary cost.** Token counts are shown as absolute numbers, never
   converted to money, and never as a percentage of a context window whose
   published value goes stale without saying so.

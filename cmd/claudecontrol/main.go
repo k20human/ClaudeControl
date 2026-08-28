@@ -9,6 +9,7 @@ import (
 	"claudecontrol/internal/app"
 	"claudecontrol/internal/config"
 	"claudecontrol/internal/hooks"
+	"claudecontrol/internal/relay"
 
 	// Register the built-in module types.
 	_ "claudecontrol/modules/claude"
@@ -22,6 +23,7 @@ import (
 )
 
 func main() {
+	relayDir := flag.String("relay", "", "internal: drain a service's terminal into this directory and exit")
 	hook := flag.String("hook", "", "internal: forward a Claude Code hook payload and exit")
 	pane := flag.String("pane", "", "internal: which pane's session the hook belongs to")
 	cfgPath := flag.String("config", config.Path(), "path to the configuration file")
@@ -37,6 +39,18 @@ func main() {
 			os.Exit(0)
 		}
 		_ = hooks.Send(socket, *hook, *pane, os.Stdin)
+		os.Exit(0)
+	}
+
+	// Relay mode is the process that stays behind a service kept across a
+	// restart. It owns the terminal the service writes to and empties it into
+	// a file, which is what keeps the service off a full buffer once the
+	// application it was started from has gone.
+	if *relayDir != "" {
+		if err := relay.Run(*relayDir, flag.Args()); err != nil {
+			fmt.Fprintln(os.Stderr, "claudecontrol:", err)
+			os.Exit(1)
+		}
 		os.Exit(0)
 	}
 

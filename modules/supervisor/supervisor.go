@@ -17,6 +17,7 @@ import (
 
 	"claudecontrol/internal/module"
 	"claudecontrol/internal/procs"
+	"claudecontrol/internal/relay"
 	"claudecontrol/internal/session"
 )
 
@@ -83,6 +84,18 @@ type service struct {
 	// matters most for the four hundred lines a restart brings back.
 	view session.View
 
+	// relay is the directory of the process standing behind a service kept
+	// across a restart, and tailStop ends the goroutine pouring its log into
+	// the emulator. Empty for a service this application holds directly.
+	relay    string
+	tailStop chan struct{}
+
+	// relayPid is the service the relay is holding, and relayRead is when its
+	// state was last looked at. A pane redraws many times a second and the
+	// state is a file: reading it every frame would be a file read a frame.
+	relayPid  int
+	relayRead time.Time
+
 	// tree is what this service had started, last time anything looked, and
 	// left is how many of those were still alive after it ended.
 	//
@@ -106,6 +119,14 @@ type service struct {
 type Module struct {
 	ctx   module.Context
 	grace time.Duration
+
+	// keep says whether services outlive the application. When they do they
+	// run under a relay, which is what keeps them off a terminal nobody is
+	// draining once it has gone.
+	keep bool
+
+	// binary is this application, which is also the relay.
+	binary string
 
 	mu   sync.Mutex
 	svcs []*service
@@ -136,6 +157,14 @@ func New(cfg map[string]any) (module.Module, error) {
 	m := &Module{grace: DefaultGrace, showing: -1, scanning: make(chan struct{})}
 	if v, ok := toFloat(cfg["stop_grace"]); ok && v > 0 {
 		m.grace = time.Duration(v * float64(time.Second))
+	}
+	if v, ok := cfg["keep_running"].(bool); ok {
+		m.keep = v
+	}
+	// The relay is this application in another mode, so it has to know where
+	// it lives. A failure here only costs the keeping, not the supervising.
+	if bin, err := os.Executable(); err == nil {
+		m.binary = bin
 	}
 
 	raw, _ := cfg["services"].([]any)
@@ -211,6 +240,12 @@ func (m *Module) Init(ctx module.Context) error {
 	m.loadCarry()
 	m.mu.Lock()
 	for _, s := range m.svcs {
+		// A service kept across a restart is found before anything is
+		// started: it is already running, and starting a second copy is how
+		// two servers come to fight over one port.
+		if m.keep && m.attachKeptLocked(s) {
+			continue
+		}
 		if s.spec.Autostart {
 			m.startLocked(s)
 		}
@@ -349,6 +384,16 @@ func matches(p procs.Proc, spec Spec) bool {
 	return true
 }
 
+// tellRelaysLocked passes the pane's size on to the terminals the relays own,
+// so a service's output is wrapped for the width it will be read at.
+func (m *Module) tellRelaysLocked(w, h int) {
+	for _, s := range m.svcs {
+		if s.relay != "" {
+			_ = relay.SetSize(s.relay, w, h)
+		}
+	}
+}
+
 // Title names the pane for what it holds.
 func (m *Module) Title() (string, bool) { return "services", true }
 
@@ -359,6 +404,9 @@ func (m *Module) Resize(w, h int) error {
 	defer m.mu.Unlock()
 	m.cols, m.rows = w, h
 	lw, lh := logArea(w, h)
+	if lw > 0 && lh > 0 {
+		m.tellRelaysLocked(lw, lh)
+	}
 	for _, s := range m.svcs {
 		if s.sess != nil && lw > 0 && lh > 0 {
 			_ = s.sess.Resize(lw, lh)
@@ -388,6 +436,16 @@ func (m *Module) Close() error {
 	// turn would make quitting take grace times the number of services.
 	var wg sync.WaitGroup
 	for _, s := range svcs {
+		// A kept service is left exactly as it is: its relay owns the terminal
+		// and goes on draining it, so nothing here has to end for it to keep
+		// running. Only the pouring of its log into this pane stops.
+		if s.relay != "" {
+			if s.tailStop != nil {
+				close(s.tailStop)
+				s.tailStop = nil
+			}
+			continue
+		}
 		if s.sess == nil {
 			continue
 		}
@@ -416,6 +474,10 @@ func (m *Module) refreshLocked() {
 			if !s.adopted.Alive() {
 				s.adopted, s.state, s.since = nil, Stopped, time.Now()
 			}
+			continue
+		}
+		if s.relay != "" {
+			m.refreshKeptLocked(s)
 			continue
 		}
 		if s.sess == nil {
@@ -453,9 +515,18 @@ func (m *Module) startLocked(s *service) {
 	s.adopted = nil
 	if s.sess != nil {
 		m.captureLocked(s)
+		if s.tailStop != nil {
+			close(s.tailStop)
+			s.tailStop = nil
+		}
 		_ = s.sess.Close()
 		s.sess = nil
 	}
+	if m.keep && m.binary != "" {
+		m.startKeptLocked(s)
+		return
+	}
+	s.relay = ""
 	w, h := logArea(m.cols, m.rows)
 	if w < 1 || h < 1 {
 		w, h = 80, 24
@@ -492,6 +563,10 @@ func (m *Module) stopLocked(s *service) {
 				m.ctx.Wake()
 			}
 		}()
+		return
+	}
+	if s.relay != "" {
+		m.stopKeptLocked(s)
 		return
 	}
 	if s.sess == nil {
@@ -629,6 +704,10 @@ func (m *Module) Services() []Snapshot {
 			Children: len(s.tree), Left: s.left,
 		}
 		switch {
+		case s.relay != "":
+			// An attached session has no process of its own: the one that
+			// matters is the service the relay is holding.
+			snap.Pid = s.relayPid
 		case s.sess != nil:
 			snap.Pid = s.sess.Pid()
 		case s.adopted != nil:

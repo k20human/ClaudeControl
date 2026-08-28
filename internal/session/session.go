@@ -208,6 +208,11 @@ func (s *Session) Resize(w, h int) error {
 	s.Term.Resize(w, h)
 	s.repaintLocked()
 	s.termMu.Unlock()
+	if s.ptmx == nil {
+		// An attached session has no terminal of its own: what it shows was
+		// written to somebody else's, and resizing here would claim otherwise.
+		return nil
+	}
 	if err := pty.Setsize(s.ptmx, &pty.Winsize{Rows: uint16(h), Cols: uint16(w)}); err != nil {
 		return fmt.Errorf("session: resize: %w", err)
 	}
@@ -436,6 +441,31 @@ func (s *Session) LineText(line, from, to int) string {
 	return b.String()
 }
 
+// Attach makes a session with no process of its own: an emulator, and Feed to
+// put bytes into it.
+//
+// It is how output that was written to a terminal somewhere else is shown
+// here — a service kept running across a restart, whose terminal belongs to
+// the relay draining it. Everything that reads a session works unchanged:
+// drawing, the wheel, the search, selecting text. Everything that acts on a
+// process does nothing, because there is no process here to act on.
+func Attach(id ID, w, h int, onUpdate func()) (*Session, error) {
+	if w < 1 || h < 1 {
+		return nil, fmt.Errorf("session: bad size %dx%d", w, h)
+	}
+	s := &Session{
+		ID:        id,
+		Term:      vt.NewSafeEmulator(w, h),
+		onUpdate:  onUpdate,
+		drainDone: make(chan struct{}),
+	}
+	close(s.drainDone)
+	s.mu.Lock()
+	s.status = Running
+	s.mu.Unlock()
+	return s, nil
+}
+
 // Feed writes bytes into the emulator without sending them to the guest.
 //
 // It is how something already printed is put back on a screen: the text goes
@@ -474,9 +504,10 @@ func (s *Session) Status() (Status, int) {
 	return s.status, s.exitCode
 }
 
-// Pid is the process id, or zero once it is gone.
+// Pid is the process id, or zero once it is gone — and zero for an attached
+// session, which never had one.
 func (s *Session) Pid() int {
-	if s.cmd.Process == nil {
+	if s.cmd == nil || s.cmd.Process == nil {
 		return 0
 	}
 	return s.cmd.Process.Pid
@@ -525,10 +556,13 @@ func (s *Session) Close() error {
 	s.closed = true
 	s.mu.Unlock()
 
-	if s.cmd.Process != nil {
+	if s.cmd != nil && s.cmd.Process != nil {
 		_ = s.cmd.Process.Kill()
 	}
-	err := s.ptmx.Close()
+	var err error
+	if s.ptmx != nil {
+		err = s.ptmx.Close()
+	}
 
 	// Stop the reply drain, or every closed pane leaks a goroutine.
 	//

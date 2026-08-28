@@ -371,6 +371,35 @@ func (m *Module) Key(k uv.KeyEvent) {
 // Mouse acts on whatever region was clicked. The regions are the ones drawn
 // last frame, so what you click is what you saw.
 func (m *Module) Mouse(ev uv.MouseEvent) {
+	// A log is text you read, and text you read is text you copy. Dragging
+	// across it selects, exactly as it does in a session — the pointer arrives
+	// in the pane's coordinates and the log is drawn below the header, so the
+	// header's rows come off before the view is told anything.
+	if sess, view := m.shownLog(); sess != nil {
+		mouse := ev.Mouse()
+		y := mouse.Y - headerRows
+		switch e := ev.(type) {
+		case uv.MouseClickEvent:
+			if e.Button == uv.MouseLeft && y >= 0 {
+				view.ClearSelection()
+				view.Press(sess, mouse.X, y, false)
+				m.wake()
+				return
+			}
+		case uv.MouseMotionEvent:
+			if e.Button == uv.MouseLeft {
+				view.Drag(sess, mouse.X, y)
+				m.wake()
+				return
+			}
+		case uv.MouseReleaseEvent:
+			if view.Release() {
+				m.wake()
+				return
+			}
+		}
+	}
+
 	// The wheel belongs to the log while one is open. It is the only way to
 	// reach what a restart brought back, which is most of the point of
 	// bringing it back.
@@ -394,9 +423,7 @@ func (m *Module) Mouse(ev uv.MouseEvent) {
 		default:
 			return
 		}
-		if m.ctx.Wake != nil {
-			m.ctx.Wake()
-		}
+		m.wake()
 		return
 	}
 	click, ok := ev.(uv.MouseClickEvent)
@@ -528,4 +555,35 @@ func clip(s string, w int) string {
 		return s
 	}
 	return ansi.Truncate(s, w, "…")
+}
+
+// shownLog is the session and view the pane is showing, or nils when it is
+// showing the list.
+func (m *Module) shownLog() (*session.Session, *session.View) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.showing < 0 || m.showing >= len(m.svcs) {
+		return nil, nil
+	}
+	s := m.svcs[m.showing]
+	if s.sess == nil {
+		return nil, nil
+	}
+	return s.sess, &s.view
+}
+
+// SelectedText is what is selected in the log on screen, or empty.
+func (m *Module) SelectedText() string {
+	sess, view := m.shownLog()
+	if sess == nil {
+		return ""
+	}
+	return view.SelectedText(sess)
+}
+
+// wake asks for a repaint.
+func (m *Module) wake() {
+	if m.ctx.Wake != nil {
+		m.ctx.Wake()
+	}
 }
