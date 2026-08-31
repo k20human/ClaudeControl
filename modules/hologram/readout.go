@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image/color"
 	"math/rand"
+	"strings"
 	"sync"
 	"time"
 
@@ -221,7 +222,9 @@ func turnLine(met transcript.Metrics) string {
 // zero when there is no room for it. Sizing and drawing both go through this,
 // or the sphere would be built for one width and painted into another.
 func columnW(paneW int, side string) int {
-	if side == "" || side == "off" || paneW < readoutMinPane {
+	// Overlaid, the text takes nothing out of the pane: it is drawn on top of
+	// what is already there, which is the whole point of it.
+	if side == "" || side == "off" || side == "overlay" || paneW < readoutMinPane {
 		return 0
 	}
 	w := readoutW
@@ -244,6 +247,52 @@ func readoutSplit(area uv.Rectangle, side string) (sphere, column uv.Rectangle, 
 	}
 	return uv.Rect(area.Min.X, area.Min.Y, area.Dx()-w, area.Dy()),
 		uv.Rect(area.Max.X-w, area.Min.Y, w, area.Dy()), true
+}
+
+// drawOver paints the text on top of whatever is already in the pane, in the
+// top right corner, taking only the rows it has lines for.
+//
+// A reserved column costs the sphere its width whether or not there is
+// anything to put in it, and there usually is not: two lines under a column
+// thirty rows tall. Overlaid, each line carries its own background so it stays
+// readable against the particles moving behind it — the corner maxim has been
+// drawn this way from the start.
+func (r *readout) drawOver(scr uv.Screen, area uv.Rectangle, now time.Time) {
+	if area.Dx() < readoutMinPane || area.Dy() < 3 {
+		return
+	}
+	width := readoutW
+	if half := area.Dx() / 2; width > half {
+		width = half
+	}
+	for i, line := range r.Lines(now) {
+		y := area.Min.Y + i
+		if y >= area.Max.Y-1 {
+			return
+		}
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		line = clipTo(line, width-2)
+		w := ansi.StringWidth(line)
+		x := area.Max.X - 1 - w
+		// The background travels with the line and no further: everything
+		// around it is sphere, and blanking a rectangle would be the reserved
+		// column again.
+		render.Fill(scr, uv.Rect(x-1, y, w+2, 1), bgPanel)
+
+		switch {
+		case i == 0:
+			render.Text(scr, x, y, line, fgFlavour, bgPanel)
+		case len(line) > 5 && line[2] == ':':
+			// The timestamp is dimmed so the eye lands on what happened, as
+			// it is in the column.
+			render.Text(scr, x, y, line[:5], fgStamp, bgPanel)
+			render.Text(scr, x+5, y, line[5:], fgEvent, bgPanel)
+		default:
+			render.Text(scr, x, y, line, fgEvent, bgPanel)
+		}
+	}
 }
 
 // draw paints the column.

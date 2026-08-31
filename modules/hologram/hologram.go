@@ -80,9 +80,10 @@ func New(cfg map[string]any) (module.Module, error) {
 		side = "right"
 	}
 	switch side {
-	case "off", "left", "right":
+	case "off", "left", "right", "overlay":
 	default:
-		return nil, fmt.Errorf("hologram: unknown readout %q (want off, left or right)", side)
+		return nil, fmt.Errorf(
+			"hologram: unknown readout %q (want off, left, right or overlay)", side)
 	}
 
 	fps := float64(DefaultFPS)
@@ -340,8 +341,11 @@ func (m *Module) Draw(scr uv.Screen, area uv.Rectangle) {
 	m.renderer.Draw(scr, sphere)
 	m.mu.Unlock()
 
-	if split {
+	switch {
+	case split:
 		m.readout.draw(scr, column, now)
+	case m.side == "overlay":
+		m.readout.drawOver(scr, area, now)
 	}
 	// Across the whole pane rather than inside the column: the corner is the
 	// corner, column or no column.

@@ -349,7 +349,7 @@ form that fits without costing you the buttons.
   options:
     style: sphere            # sphere, ring or avatar
     fps: 20                  # frames a second, 1 to 60, default 20
-    readout: right           # right, left or off — the text column
+    readout: right           # right, left, overlay or off — the text
     speed: 0.18              # flow speed
     trail: 0.90              # how much of a dot survives each frame
     density: 1               # multiplier over the automatic particle count
@@ -387,6 +387,15 @@ principle be wrong about it, this one asserts nothing at all — no activity, no
 figure, no state — which is what makes it safe to show whatever is happening.
 It is dropped whole on a narrow pane: an aphorism cut in half is not a shorter
 aphorism.
+
+**`readout: overlay`** gives the width back. The column reserves its width down
+the whole height of the pane whether or not there is anything to put in it, and
+usually there is not — two lines under thirty rows. Overlaid, the sphere has
+the whole pane and the lines are drawn on top of it, each carrying its own
+background so it reads against the particles moving behind; only the rows that
+have a line are taken. In a tall pane of 66 by 43 the sphere goes from 34
+columns wide to 59. In a wide one it changes nothing: there the sphere is
+limited by the height, and the column was not what was costing it.
 
 The column disappears below 44 columns of pane and the sphere takes the whole
 width. The five numbers above are also sliders in the settings menu.
