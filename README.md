@@ -390,6 +390,28 @@ aphorism.
 The column disappears below 44 columns of pane and the sphere takes the whole
 width. The five numbers above are also sliders in the settings menu.
 
+### Opening one somewhere else
+
+**Right-click → open in…** chooses where the next session starts.
+
+A tab's directory is where its process is running, so there is no changing it —
+a conversation cannot be moved to another directory any more than a running
+program can. What this does instead is open the next one somewhere, in a new
+tab, leaving what is already running alone.
+
+The list is the directories you have actually had conversations in, most recent
+first, because the one you want is nearly always among the last few. It is read
+rather than guessed: Claude Code names a project folder after the directory
+with the separators replaced, which cannot be undone for a directory whose own
+name contains a dash, so the newest transcript in each folder is opened and
+asked where it ran. Two dozen directories cost about thirty milliseconds.
+
+Typing filters that list. Typing something that starts with `/`, `~` or `.`
+offers the filesystem as well, so a directory you have never worked in is
+reachable — as rows to click rather than as spelling to get right. Paths are
+shortened from the left, since the end of a path is what tells you which one it
+is.
+
 ### When a conversation ends
 
 The pane goes back to being a shell, in the directory the conversation was
@@ -584,7 +606,7 @@ same conversation. Taking the last tab out of a pane takes the pane with it,
 its share going back to its neighbours the way a closed pane's does.
 
 **Right-click** opens a small menu on the pane: copy, paste, find here, new
-session, close, zoom, move. It exists because turning mouse reporting on takes
+session, **open in…**, close, zoom, move. It exists because turning mouse reporting on takes
 the right button away from the terminal, and with it the menu the terminal
 would have shown — having taken it, the application owes one back.
 

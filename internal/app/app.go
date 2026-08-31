@@ -126,6 +126,9 @@ type App struct {
 	// tabDrag is the tab being carried to another pane, if any.
 	tabDrag *tabDragState
 
+	// openDir is the open panel choosing where a session starts.
+	openDir *openDirState
+
 	// conv is the open search across the conversations on disk.
 	conv *convSearch
 
@@ -628,6 +631,7 @@ func (a *App) draw() {
 	a.drawTabDrag(a.scr)
 	a.drawFind(a.scr)
 	a.drawConvSearch(a.scr)
+	a.drawOpenDir(a.scr)
 	a.drawMenu(a.scr)
 	a.drawPalette(a.scr)
 	a.drawOverlay(a.scr)
@@ -642,7 +646,8 @@ func (a *App) draw() {
 // one is open the cursor has no business being shown.
 func (a *App) cursorTarget() (x, y int, visible bool) {
 	if a.overlay != overlayNone || a.sessionPanel != nil || a.settingsPanel != nil ||
-		a.palette != nil || a.menu != nil || a.find != nil || a.conv != nil {
+		a.palette != nil || a.menu != nil || a.find != nil || a.conv != nil ||
+		a.openDir != nil {
 		return 0, 0, false
 	}
 	m, ok := a.modules[a.focus]

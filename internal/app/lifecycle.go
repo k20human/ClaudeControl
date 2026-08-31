@@ -14,16 +14,26 @@ import (
 
 // newPane splits the focused pane and starts a Claude Code session in the new
 // half. Later stages will offer a chooser; stage 1 always opens claude.
+// newPane opens a session beside the focused pane, where that pane is
+// working — not where the application was launched from, which is rarely the
+// same place and never after the first hour.
 func (a *App) newPane(o layout.Orientation) error {
-	a.nextPane++
-	id := a.nextPane
-
-	// Opened where you are working, not where the application was launched
-	// from — which is rarely the same place, and never after the first hour.
 	opts := map[string]any(nil)
 	if dir := a.focusedDir(); dir != "" {
 		opts = map[string]any{"dir": dir}
 	}
+	return a.newPaneWith(opts, o)
+}
+
+// newPaneIn opens a pane running a session in a named directory.
+func (a *App) newPaneIn(dir string, o layout.Orientation) error {
+	return a.newPaneWith(map[string]any{"dir": dir}, o)
+}
+
+func (a *App) newPaneWith(opts map[string]any, o layout.Orientation) error {
+	a.nextPane++
+	id := a.nextPane
+
 	m, err := module.New("claude", opts)
 	if err != nil {
 		return err
@@ -40,7 +50,7 @@ func (a *App) newPane(o layout.Orientation) error {
 	a.root = root
 	a.modules[id] = m
 	a.moduleNames[id] = "claude"
-	a.paneSpecs[id] = config.PaneSpec{Module: "claude"}
+	a.paneSpecs[id] = config.PaneSpec{Module: "claude", Options: opts}
 	a.zoomed = 0
 	a.layoutChanged = true
 	a.relayout()

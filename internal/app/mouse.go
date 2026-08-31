@@ -143,6 +143,31 @@ func (a *App) handleMouse(ev uv.MouseEvent, m uv.Mouse) {
 		return
 	}
 
+	// The directory panel answers to the pointer: a click on a row opens a
+	// session there, one outside closes it.
+	if a.openDir != nil {
+		if _, isClick := ev.(uv.MouseClickEvent); isClick {
+			r := a.convPanelRect()
+			choices := a.openDirChoices()
+			if row := a.openDir.top + m.Y - r.Y - 3; m.Y >= r.Y+3 && row < len(choices) &&
+				m.X >= r.X && m.X < r.X+r.W {
+				a.openDir.selected = row
+				a.openChosenDir()
+				return
+			}
+			a.closeOpenDir()
+		}
+		if w, isWheel := ev.(uv.MouseWheelEvent); isWheel {
+			switch w.Button {
+			case uv.MouseWheelUp:
+				a.moveOpenDir(-1)
+			case uv.MouseWheelDown:
+				a.moveOpenDir(1)
+			}
+		}
+		return
+	}
+
 	// The conversation search answers to the pointer as well as the keyboard:
 	// a click on a result opens it, and one outside closes the panel.
 	if a.conv != nil {

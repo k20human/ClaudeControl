@@ -66,6 +66,10 @@ func (a *App) menuItems() []menuItem {
 		// a task never run — for the same reason the clipboard entries do.
 		{"find here", findNote, (*App).toggleFind},
 		{"new session", "alt+n", func(a *App) { _ = a.newPane(layout.Horizontal) }},
+		// Where the next one opens. A session already running is never
+		// disturbed by it: choosing where to work next is not a reason to end
+		// what you are doing now.
+		{"open in…", "", (*App).toggleOpenDir},
 		{"close pane", "alt+x", func(a *App) { _ = a.closePane(a.focus) }},
 		{"zoom", "alt+z", (*App).toggleZoom},
 		{"move pane", "alt+r", func(a *App) { a.beginPaneDrag(a.focus) }},
