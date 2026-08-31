@@ -16,6 +16,7 @@ import (
 
 	"claudecontrol/internal/module"
 	"claudecontrol/internal/pool"
+	"claudecontrol/internal/session"
 	"claudecontrol/internal/settings"
 	"claudecontrol/internal/usage"
 )
@@ -68,6 +69,11 @@ type tab struct {
 type Module struct {
 	ctx module.Context
 
+	// dir is where tabs opened in this pane start, when the caller does not
+	// say. Empty means "wherever the tab on screen is working", which is the
+	// answer that is right without anybody configuring anything.
+	dir string
+
 	mu     sync.Mutex
 	tabs   []*tab
 	active int
@@ -88,6 +94,9 @@ const (
 func New(cfg map[string]any) (module.Module, error) {
 	raw, listed := cfg["tabs"].([]any)
 	m := &Module{}
+	if v, ok := cfg["dir"].(string); ok {
+		m.dir = expandDir(v)
+	}
 	for _, item := range raw {
 		spec, ok := item.(map[string]any)
 		if !ok {
@@ -128,6 +137,7 @@ const NewTabModule = "claude"
 // screen — opening a tab you then have to go and find would be a strange kind
 // of opening.
 func (m *Module) Add(name string, opts map[string]any) error {
+	opts = m.withDir(opts)
 	child, err := module.New(name, opts)
 	if err != nil {
 		return fmt.Errorf("tabs: %w", err)
@@ -407,6 +417,19 @@ func (m *Module) Account() (usage.Reading, bool) {
 }
 
 // SessionID is the session of the tab on screen, if it holds one.
+// Session is the process behind the tab on screen, if it has one.
+//
+// The application asks a pane whether its process is gone, and draws the
+// banner saying so on the pane that answers yes. Without this a conversation
+// that ended inside a tab left a dead screen with nothing said about it — the
+// pane held the answer and never passed the question on.
+func (m *Module) Session() *session.Session {
+	if s, ok := m.Active().(interface{ Session() *session.Session }); ok {
+		return s.Session()
+	}
+	return nil
+}
+
 func (m *Module) SessionID() string {
 	s, ok := m.Active().(interface{ SessionID() string })
 	if !ok {

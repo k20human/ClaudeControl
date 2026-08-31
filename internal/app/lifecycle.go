@@ -18,7 +18,13 @@ func (a *App) newPane(o layout.Orientation) error {
 	a.nextPane++
 	id := a.nextPane
 
-	m, err := module.New("claude", nil)
+	// Opened where you are working, not where the application was launched
+	// from — which is rarely the same place, and never after the first hour.
+	opts := map[string]any(nil)
+	if dir := a.focusedDir(); dir != "" {
+		opts = map[string]any{"dir": dir}
+	}
+	m, err := module.New("claude", opts)
 	if err != nil {
 		return err
 	}
@@ -160,4 +166,12 @@ func (a *App) evenOutSplits() {
 	walk(a.root)
 	a.layoutChanged = true
 	a.relayout()
+}
+
+// focusedDir is where the focused pane is working, if it can say.
+func (a *App) focusedDir() string {
+	if d, ok := a.modules[a.focus].(interface{ Dir() string }); ok {
+		return d.Dir()
+	}
+	return ""
 }

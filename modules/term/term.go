@@ -281,3 +281,7 @@ func (m *Module) Close() error {
 	}
 	return m.sess.Close()
 }
+
+// Dir is where this pane is working, which is where a tab opened from beside
+// it should open too.
+func (m *Module) Dir() string { return m.dir }

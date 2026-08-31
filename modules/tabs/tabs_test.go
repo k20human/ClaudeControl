@@ -451,6 +451,11 @@ func TestEveryInterfaceTheApplicationLooksForIsPassedThrough(t *testing.T) {
 		{"ScrollOffset", implements[interface{ ScrollOffset() int }](m)},
 		{"SelectedText", implements[interface{ SelectedText() string }](m)},
 		{"Sessions", implements[module.Sessioner](m)},
+		// What the application asks to know whether a pane's process is gone.
+		// Its absence left a dead conversation in a tab with nothing said.
+		{"Session", implements[interface {
+			Session() *session.Session
+		}](m)},
 		{"Find", implements[interface {
 			Find(string) int
 			FindNext(int)

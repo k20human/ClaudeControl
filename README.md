@@ -390,7 +390,31 @@ aphorism.
 The column disappears below 44 columns of pane and the sphere takes the whole
 width. The five numbers above are also sliders in the settings menu.
 
+### When a conversation ends
+
+The pane goes back to being a shell, in the directory the conversation was
+running in, with a line saying what became of it:
+
+```
+— conversation ended (0) · shell in ~/DEV · alt+a opens another session —
+```
+
+A shell rather than another conversation, because ending one is a decision and
+starting the next is a different decision. **A `claude` typed in that shell is
+not one this application manages** — the hooks travel on the command line at
+launch, so a session started by hand has no working mark, no usage figures and
+nothing to resume tomorrow. `alt+a` opens one that has all three.
+
+A conversation that has ended is not offered for tomorrow either: ending it was
+the decision, and bringing it back because the pane is still open would undo
+that decision on your behalf.
+
 ## `tabs` — several modules in one pane
+
+A tab opened at runtime — the `+`, or `alt+a` — starts **where the tab on
+screen is working**, not where the application was launched from. A pane can
+say otherwise with its own `dir:`, and a directory asked for by name beats
+both. The same rule opens a new pane with `alt+n`.
 
 For a window that is not wide enough to split again. Splitting is better when
 there is room — you see two things at once — so this is what you reach for when
@@ -399,6 +423,8 @@ there is not.
 ```yaml
 - module: tabs
   options:
+    dir: ~/projects           # where a tab opened here starts; defaults to
+                              # wherever the tab on screen is working
     tabs:
       - title: brain          # optional, defaults to the module name
         module: hologram

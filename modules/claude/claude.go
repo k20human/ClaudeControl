@@ -32,6 +32,11 @@ type Module struct {
 	ctx  module.Context
 	id   string
 	sess *session.Session
+
+	// shell says the conversation has ended and a shell has taken the pane.
+	// What is drawn is then a prompt, and there is no conversation left to
+	// resume or to report.
+	shell bool
 }
 
 // New builds a claude module. Recognised keys: "bin" (defaults to "claude"),
@@ -111,8 +116,14 @@ func (m *Module) Init(ctx module.Context) error {
 }
 
 // Sessions is this one conversation, which is what a later run would bring
-// back.
+// back — and nothing at all once it has ended.
+//
+// Ending a conversation is a decision. Bringing it back tomorrow because the
+// pane it was in is still open would undo that decision on your behalf.
 func (m *Module) Sessions() []string {
+	if m.shell {
+		return nil
+	}
 	if id := m.SessionID(); id != "" {
 		return []string{id}
 	}
@@ -183,6 +194,10 @@ func (m *Module) title() string {
 
 // Draw paints the emulated screen into area.
 func (m *Module) Draw(scr uv.Screen, area uv.Rectangle) {
+	// Drawing is the only thing that happens often enough to notice that a
+	// conversation has ended. The check is guarded and does nothing at all
+	// until it does.
+	m.carryOn()
 	m.view.Draw(m.sess, scr, area)
 }
 
@@ -322,3 +337,7 @@ func (m *Module) Close() error {
 	m.sess = nil
 	return nil
 }
+
+// Dir is where this pane is working, which is where a tab opened from beside
+// it should open too.
+func (m *Module) Dir() string { return m.dir }
