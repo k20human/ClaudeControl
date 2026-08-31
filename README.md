@@ -348,6 +348,7 @@ form that fits without costing you the buttons.
 - module: hologram
   options:
     style: sphere            # sphere, ring or avatar
+    fps: 20                  # frames a second, 1 to 60, default 20
     readout: right           # right, left or off — the text column
     speed: 0.18              # flow speed
     trail: 0.90              # how much of a dot survives each frame
@@ -389,6 +390,31 @@ aphorism.
 
 The column disappears below 44 columns of pane and the sphere takes the whole
 width. The five numbers above are also sliders in the settings menu.
+
+**What it costs, measured.** A hologram on a tab you are not looking at costs
+nothing — 0.3% of a core, which is the floor for an idle window. It is only
+drawn when it is on screen, and only what is drawn is paid for.
+
+On screen it costs what its pace asks for. The panel is what sets the rate the
+whole application redraws at, so the pace is its business rather than the draw
+loop's: it asks for the next frame at `fps`, and the application redraws when
+asked. In a pane of 120 by 30, on this machine:
+
+| frames a second | CPU |
+|---|---|
+| 60 | 8.7% |
+| 30 | 6.0% |
+| **20** — the default | **4.5%** |
+| 10 | 3.3% |
+
+Two thirds of that is not the sphere. Timed on its own, a frame of sphere at
+that size costs 0.8 ms — 1.6% of a core at twenty a second. The rest is the
+application redrawing, diffing and writing the whole screen. Which is why the
+answer was to ask for fewer frames rather than to make the sphere cheaper, and
+why the returns stop below twenty: what is left is the cost of drawing at all.
+
+Asking on every frame drawn, as this used to, cost 15.8% for the same pane and
+27.8% at 200 by 50 — a core-third spent on frames nobody can follow.
 
 ### Opening one somewhere else
 

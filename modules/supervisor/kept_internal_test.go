@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -48,7 +49,39 @@ func keptModule(t *testing.T, bin, name, script, dir string) *Module {
 	if err := m.Resize(70, 12); err != nil {
 		t.Fatalf("Resize: %v", err)
 	}
+	// Whatever this test does or fails to do, nothing of its own outlives it.
+	//
+	// Registered here rather than at the end of a test body, because these
+	// tests are about services that survive the application on purpose: a
+	// test that fails half way would otherwise leave a relay draining a shell
+	// loop for as long as the machine is up. Ten of them accumulated before
+	// this existed.
+	t.Cleanup(func() { endRelays(m) })
 	return m
+}
+
+// endRelays kills whatever a module's relays are still holding.
+func endRelays(m *Module) {
+	m.mu.Lock()
+	dirs := make([]string, 0, len(m.svcs))
+	for _, s := range m.svcs {
+		dirs = append(dirs, m.relayDir(s.spec.Name))
+	}
+	m.mu.Unlock()
+
+	for _, dir := range dirs {
+		st, ok := relay.ReadState(dir)
+		if !ok {
+			continue
+		}
+		if st.Pid > 0 {
+			_ = syscall.Kill(-st.Pid, syscall.SIGKILL)
+			_ = syscall.Kill(st.Pid, syscall.SIGKILL)
+		}
+		if st.Relay > 0 {
+			_ = syscall.Kill(st.Relay, syscall.SIGKILL)
+		}
+	}
 }
 
 // pane is a screen an internal test can paint into. The external tests have

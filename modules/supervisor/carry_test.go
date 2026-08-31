@@ -100,14 +100,15 @@ func TestTheOutputSurvivesTheApplicationClosing(t *testing.T) {
 	waitFor(t, "the service", func() bool { return stateOf(m, "noisy").State == supervisor.Running })
 	showLog(t, m)
 
-	var out string
-	waitFor(t, "the record of the last run", func() bool {
-		out = paint(t, m, 70, 12).text()
-		return strings.Contains(out, "SAID-BEFORE-QUITTING")
+	// Both, and waited for together: the kept output is replayed the instant
+	// the session opens while the new run has yet to print anything, so
+	// asking for the second in the snapshot that first showed the first is a
+	// race this test used to lose.
+	waitFor(t, "the old run and the new one together", func() bool {
+		out := paint(t, m, 70, 12).text()
+		return strings.Contains(out, "SAID-BEFORE-QUITTING") &&
+			strings.Contains(out, "SECOND-RUN")
 	})
-	if !strings.Contains(out, "SECOND-RUN") {
-		t.Errorf("the new run is not showing under the old one:\n%s", out)
-	}
 }
 
 // Stopping a service should not blank the thing you opened the view to read.

@@ -57,12 +57,18 @@ type Module struct {
 	// prev is each session's last known state, so a transition can be told
 	// from a repeat of the same announcement.
 	prev map[string]poolState
+
+	// pace is how often the panel asks for the next frame. It is what sets
+	// the rate the whole application redraws at while this panel is on
+	// screen, which is why it is not the draw loop's business but this one's.
+	pace *pacer
 }
 
 // poolState is aliased so the map above reads without the package name.
 type poolState = pool.State
 
 // New builds the module. Recognised keys: "style" (sphere, ring or avatar),
+// "fps" (how often it asks to be redrawn, default 20),
 // and for the sphere "speed", "trail", "density", "rotation", "breath".
 func New(cfg map[string]any) (module.Module, error) {
 	style, _ := cfg["style"].(string)
@@ -79,11 +85,20 @@ func New(cfg map[string]any) (module.Module, error) {
 		return nil, fmt.Errorf("hologram: unknown readout %q (want off, left or right)", side)
 	}
 
+	fps := float64(DefaultFPS)
+	if v, ok := asFloat(cfg["fps"]); ok {
+		if v <= 0 || v > maxFPS {
+			return nil, fmt.Errorf("hologram: fps %v is outside 1..%d", v, maxFPS)
+		}
+		fps = v
+	}
+
 	params := paramsFrom(cfg)
 	m := &Module{
 		style:   style,
 		params:  params,
 		side:    side,
+		pace:    newPacer(fps),
 		readout: newReadout(params.Seed),
 		prev:    map[string]poolState{},
 	}
@@ -331,8 +346,14 @@ func (m *Module) Draw(scr uv.Screen, area uv.Rectangle) {
 	// Across the whole pane rather than inside the column: the corner is the
 	// corner, column or no column.
 	m.readout.drawMaxim(scr, area)
-	m.wake()
+	// The next frame, at this panel's own pace rather than as fast as the
+	// application will go.
+	m.pace.ask(m.wake)
 }
 
-// Close releases nothing: the module owns no process.
-func (m *Module) Close() error { return nil }
+// Close stops asking for frames. The module owns no process, but a panel that
+// went on waking a closed application would be a leak of the same kind.
+func (m *Module) Close() error {
+	m.pace.stop()
+	return nil
+}
