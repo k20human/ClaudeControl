@@ -275,12 +275,24 @@ signalling only the child leaves that server holding its port. A service
 adopted from a shell also shares that shell's process group, so signalling the
 group would kill the terminal you are sitting in.
 
+**Each service can be acted on by itself.** The row you are on carries three
+controls at its right — `▸` start, `⟳` restart, `■` stop — and they act on that
+service alone. They are on that row and no other: a stray click must not stop a
+server you were not even looking at, which is why the tab strip hides its close
+cross the same way. The detail keeps its place beside them where the pane is
+wide enough for both, because "SIGTERM · 1 left" is the reason you would press
+restart and hiding it on the row you are about to act on would be hiding it at
+the worst moment.
+
+The buttons across the top still act on everything ticked, which is what
+bringing a stack up or down wants. From the keyboard the same split: `s` `r`
+`x` act on the row you are on, and `S` `R` `X` on the ticked set.
+
 In the pane: click a name for its output, or a checkbox to tick it. **Drag
 across a log to select it**, then `alt+c` — a log is text you read, and text you
 read is text you copy. **The wheel reaches the log's history**, which is how you get to the lines a restart
 brought back. From the keyboard, `↑ ↓` moves, `space` ticks, `a` ticks
-everything or nothing, `enter` opens the output, and `s` `r` `x` start, restart
-and stop the ticked ones.
+everything or nothing, and `enter` opens the output.
 
 ## `services` — is it up?
 

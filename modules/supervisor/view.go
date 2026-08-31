@@ -193,8 +193,54 @@ func (m *Module) drawRow(scr uv.Screen, area uv.Rectangle, y, i int, s *service,
 		}
 	}
 	render.Text(scr, x, y, fmt.Sprintf("%-*s", stateW, s.state), fg, bg)
-	if x+stateW+1 < area.Max.X {
-		render.Text(scr, x+stateW+1, y, clip(detail, area.Max.X-x-stateW-1), fgMuted, bg)
+
+	// The row you are on carries its own controls, in place of its detail.
+	//
+	// On that row and no other: a stray click must not stop a server you were
+	// not even looking at, which is the same reason the tab strip shows its
+	// close cross only on the tab in front of you. The detail stays readable
+	// everywhere else, and it is what you read the list for.
+	rest := area.Max.X - x - stateW - 1
+	controls := ansi.StringWidth(rowControls)
+	if i == m.sel && rest >= controls {
+		// Both when there is room for both. The detail is why you would act
+		// on a service — "SIGTERM · 1 left" is the reason to press restart —
+		// and hiding it on the one row you are about to act on would be
+		// hiding it at the worst possible moment. In a pane too narrow for
+		// the pair, the controls win: the detail is on every other row and
+		// comes back the moment you move off this one.
+		if room := rest - controls - 2; room >= detailMin {
+			render.Text(scr, x+stateW+1, y, clip(detail, room), fgMuted, bg)
+		}
+		m.drawRowControls(scr, area, area.Max.X-controls-1, y, idx, bg)
+		return
+	}
+	if rest > 0 {
+		render.Text(scr, x+stateW+1, y, clip(detail, rest), fgMuted, bg)
+	}
+}
+
+// detailMin is the least detail worth showing beside the controls. Below it
+// the text is more ellipsis than fact.
+const detailMin = 12
+
+// rowControls is what the highlighted row offers: start, restart, stop.
+const rowControls = "▸  ⟳  ■"
+
+// drawRowControls paints the three glyphs and makes each one clickable.
+func (m *Module) drawRowControls(scr uv.Screen, area uv.Rectangle, x, y, idx int, bg color.Color) {
+	for _, c := range []struct {
+		glyph string
+		run   func(*Module)
+	}{
+		{"▸", func(m *Module) { m.StartOne(idx) }},
+		{"⟳", func(m *Module) { m.RestartOne(idx) }},
+		{"■", func(m *Module) { m.StopOne(idx) }},
+	} {
+		render.Text(scr, x, y, c.glyph, fgHot, bg)
+		// Two columns wide: a glyph one cell across is a target you miss.
+		m.hitLocked(area, x, y, 2, c.run)
+		x += 3
 	}
 }
 
@@ -359,11 +405,21 @@ func (m *Module) Key(k uv.KeyEvent) {
 		m.show(sel)
 	case key.Text == "a":
 		m.toggleAll()
+
+	// Lower case acts on the row you are on, which is the common case: one
+	// server has wedged and the rest of the stack is fine. Shifted, the same
+	// letter acts on everything ticked, for bringing a stack up or down.
 	case key.Text == "s":
-		m.StartPicked()
+		m.StartOne(sel)
 	case key.Text == "r":
-		m.RestartPicked()
+		m.RestartOne(sel)
 	case key.Text == "x":
+		m.StopOne(sel)
+	case key.Text == "S":
+		m.StartPicked()
+	case key.Text == "R":
+		m.RestartPicked()
+	case key.Text == "X":
 		m.StopPicked()
 	}
 }
