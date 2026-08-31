@@ -222,6 +222,13 @@ func (a *App) handleKey(e uv.KeyPressEvent) {
 	// A panel swallows the keystroke that closes it, so dismissing help can
 	// never drop a stray character into the session underneath.
 	if a.overlay != overlayNone {
+		// Space is the box, not an answer: a panel offering a choice has to
+		// let you change it without leaving.
+		if a.overlay == overlayQuit && e.MatchString("space") {
+			a.keepLayout = !a.keepLayout
+			a.Wake()
+			return
+		}
 		a.dismissOverlay(e.MatchString("y", "enter"))
 		return
 	}

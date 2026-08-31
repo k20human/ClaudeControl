@@ -90,6 +90,14 @@ type App struct {
 	cfgPath     string
 	moduleNames map[layout.PaneID]string
 
+	// paneSpecs is what each pane was built from.
+	//
+	// Only some modules can describe themselves; a supervisor cannot, and a
+	// pane written down by name alone would come back with no services at
+	// all. So what a pane was born with is remembered, and a module that can
+	// speak for itself overrides it when the layout is written.
+	paneSpecs map[layout.PaneID]config.PaneSpec
+
 	// status is a sentence for the bar, and statusAt when it was said. It is
 	// how the application answers something it was asked to do but could not.
 	status   string
@@ -109,6 +117,11 @@ type App struct {
 	alerts      *alert.Notifier
 	waitingMark map[string]bool
 	bellPending atomic.Bool
+
+	// keepLayout is whether quitting writes the arrangement down. Ticked to
+	// begin with: keeping what you left is the answer that is right more
+	// often, and the panel says so before you press anything.
+	keepLayout bool
 
 	// tabDrag is the tab being carried to another pane, if any.
 	tabDrag *tabDragState
@@ -165,6 +178,28 @@ func New(cfgPath string) (*App, error) {
 		return nil, err
 	}
 
+	// The arrangement the last run left, when it is still the newer word on
+	// the subject. A saved layout that will not rebuild is not worth refusing
+	// to start over — the configuration is used and the bar says why.
+	resuming, _ := LoadSnapshot(SnapshotPath())
+	note := ""
+	if saved, why := chooseLayout(resuming, cfgPath); saved != nil {
+		spec, cerr := config.NodeFrom(saved)
+		if cerr == nil {
+			var sroot *layout.Node
+			var spanes map[layout.PaneID]config.PaneSpec
+			sroot, spanes, cerr = config.Build(&config.Config{Layout: spec})
+			if cerr == nil {
+				root, panes = sroot, spanes
+			}
+		}
+		if cerr != nil {
+			note = "saved layout unusable, using config.yaml: " + cerr.Error()
+		}
+	} else if why != "" {
+		note = why
+	}
+
 	b := bus.New()
 	a := &App{
 		root:        root,
@@ -174,12 +209,14 @@ func New(cfgPath string) (*App, error) {
 		rects:       make(map[layout.PaneID]layout.Rect),
 		cfgPath:     cfgPath,
 		moduleNames: make(map[layout.PaneID]string),
+		paneSpecs:   make(map[layout.PaneID]config.PaneSpec),
 		hoverDiv:    -1,
 		hoverBtn:    -1,
 		pointerX:    -1,
 		pointerY:    -1,
 		wake:        make(chan struct{}, 1),
 		waitingMark: make(map[string]bool),
+		keepLayout:  true,
 	}
 
 	// Built before the hook pump starts, because a hook can arrive before the
@@ -205,7 +242,6 @@ func New(cfgPath string) (*App, error) {
 
 	// The conversations the last run left behind, handed out in the order the
 	// panes appear — the same order they were recorded in.
-	resuming, _ := LoadSnapshot(SnapshotPath())
 	pending := resumable(resuming.Sessions)
 
 	for _, id := range layout.Leaves(root) {
@@ -219,6 +255,7 @@ func New(cfgPath string) (*App, error) {
 		}
 		a.modules[id] = m
 		a.moduleNames[id] = spec.Module
+		a.paneSpecs[id] = spec
 		if id > a.nextPane {
 			a.nextPane = id
 		}
@@ -226,6 +263,11 @@ func New(cfgPath string) (*App, error) {
 	if ids := layout.Leaves(root); len(ids) > 0 {
 		a.focus = ids[0]
 		a.prev = ids[0]
+	}
+	if note != "" {
+		// Said once the bar exists to say it in, and said at all because a
+		// missing arrangement is exactly the kind of thing to wonder about.
+		a.setStatus("%s", note)
 	}
 	return a, nil
 }

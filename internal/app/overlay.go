@@ -66,10 +66,15 @@ func (a *App) drawOverlay(scr uv.Screen) {
 		a.drawPanel(scr, "QUIT", [][2]string{
 			{"", what},
 			{"", "Sessions do not survive the application."},
-		}, "y or enter to quit — any other key to stay", panelWarn, []panelAction{
-			{"[ quit ]", true, func(a *App) { a.dismissOverlay(true) }},
-			{"[ stay ]", false, func(a *App) { a.dismissOverlay(false) }},
-		})
+			{"", ""},
+			{"", "The arrangement you leave — panes, tabs, dividers —"},
+			{"", "comes back next time unless you clear the box."},
+		}, "y or enter to quit — space toggles the box — any other key to stay",
+			panelWarn, []panelAction{
+				{a.keepBoxLabel(), false, func(a *App) { a.keepLayout = !a.keepLayout }},
+				{"[ quit ]", true, func(a *App) { a.dismissOverlay(true) }},
+				{"[ stay ]", false, func(a *App) { a.dismissOverlay(false) }},
+			})
 	}
 }
 
@@ -200,10 +205,21 @@ func (a *App) drawPanel(scr uv.Screen, title string, rows [][2]string, footer st
 // panel must never leak the keystroke into a session underneath.
 func (a *App) dismissOverlay(confirmed bool) bool {
 	if a.overlay == overlayQuit && confirmed {
+		// Written here rather than on the way out: the panes and their
+		// modules are still there to be asked what they hold.
+		a.saveLayout()
 		a.quit = true
 	}
 	a.overlay = overlayNone
 	a.panelButtons = nil
 	a.clearNext = true
 	return true
+}
+
+// keepBoxLabel is the tick as it reads in the panel.
+func (a *App) keepBoxLabel() string {
+	if a.keepLayout {
+		return "[x] save this layout"
+	}
+	return "[ ] save this layout"
 }

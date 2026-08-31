@@ -692,6 +692,31 @@ copying.
 
 ---
 
+# Keeping the arrangement you left
+
+Panes get split, tabs get moved, dividers get dragged. Closing offers to keep
+all of it — a `[x] save this layout` in the quit panel, ticked to begin with.
+Space toggles it, so does clicking it, and `y` or `enter` quits honouring it.
+
+It is written beside the sessions in `~/.local/state/claudecontrol/state.json`,
+in the same shape the configuration file uses, and it holds the ratios as well
+as the structure: a divider dragged where you wanted it is part of the
+arrangement.
+
+**Your configuration wins if you have edited it since.** The saved arrangement
+starts the next run unless `config.yaml` is newer than it, so adding a pane
+there is a pane you see rather than an edit that appears to do nothing. If a
+saved arrangement will not rebuild — a module that no longer exists, options
+that no longer parse — the configuration is used and the bar says why.
+
+A pane is written down as what it was built from, updated by what it can say
+about itself. That distinction matters: a pane of tabs reports the tabs it
+holds *now*, which is the point after an afternoon of moving them, while a
+supervisor cannot describe itself and would otherwise come back with no
+services at all.
+
+---
+
 # What it deliberately does not do
 
 - **No detaching, unless a service asks for it.** Closing the application ends

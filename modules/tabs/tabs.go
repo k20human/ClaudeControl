@@ -43,7 +43,11 @@ type tab struct {
 	title string
 	// name is the module it was built from, kept so the pane can be written
 	// back to the configuration as it stands rather than as it was declared.
+	// opts is what it was built with, kept for the same reason and for a
+	// harder one: a term cannot describe itself, and a tab written down as a
+	// term with no options comes back as a bare shell.
 	name string
+	opts map[string]any
 	mod  module.Module
 
 	// x and w are where its label was last drawn, so a click lands on what
@@ -102,7 +106,7 @@ func New(cfg map[string]any) (module.Module, error) {
 		if title == "" {
 			title = name
 		}
-		m.tabs = append(m.tabs, &tab{title: title, name: name, mod: child})
+		m.tabs = append(m.tabs, &tab{title: title, name: name, opts: opts, mod: child})
 	}
 	if len(m.tabs) == 0 && !listed {
 		// No tabs and nothing saying so is a mistake in the configuration,
@@ -139,7 +143,7 @@ func (m *Module) Add(name string, opts map[string]any) error {
 	if inner < 1 {
 		inner = 1
 	}
-	m.tabs = append(m.tabs, &tab{title: title, name: name, mod: child})
+	m.tabs = append(m.tabs, &tab{title: title, name: name, opts: opts, mod: child})
 	m.active = len(m.tabs) - 1
 	cols := m.cols
 	m.mu.Unlock()
@@ -544,6 +548,11 @@ func (m *Module) Values() map[string]any {
 	out := make([]any, 0, len(m.tabs))
 	for _, t := range m.tabs {
 		entry := map[string]any{"title": t.title, "module": t.name}
+		// What it was built with, so a tab whose module cannot speak for
+		// itself still comes back as itself rather than as a bare shell.
+		if len(t.opts) > 0 {
+			entry["options"] = t.opts
+		}
 		if v, ok := t.mod.(interface{ Values() map[string]any }); ok {
 			entry["options"] = v.Values()
 		}

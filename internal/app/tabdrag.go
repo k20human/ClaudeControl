@@ -5,6 +5,7 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 
+	"claudecontrol/internal/config"
 	"claudecontrol/internal/layout"
 	"claudecontrol/internal/module"
 	"claudecontrol/internal/render"
@@ -40,8 +41,8 @@ type tabDragState struct {
 // tabber is a pane that can give a tab up and take one in.
 type tabber interface {
 	TabAt(x, y int) (int, bool)
-	Detach(int) (module.Module, string, bool)
-	Adopt(module.Module, string) error
+	Detach(int) (module.Module, module.Held, bool)
+	Adopt(module.Module, module.Held) error
 	Reorder(int, int)
 	Count() int
 }
@@ -172,13 +173,13 @@ func (a *App) moveTabInto(d *tabDragState) {
 	if !ok {
 		return
 	}
-	mod, title, ok := a.takeTab(d)
+	mod, h, ok := a.takeTab(d)
 	if !ok {
 		return
 	}
-	if err := dst.Adopt(mod, title); err != nil {
+	if err := dst.Adopt(mod, h); err != nil {
 		a.setStatus("%s", err)
-		a.putTabBack(d, mod, title)
+		a.putTabBack(d, mod, h)
 		return
 	}
 	a.afterTabLeft(d)
@@ -187,7 +188,7 @@ func (a *App) moveTabInto(d *tabDragState) {
 
 // promoteTab makes a tab a pane of its own, on the side the preview showed.
 func (a *App) promoteTab(d *tabDragState) {
-	mod, title, ok := a.takeTab(d)
+	mod, h, ok := a.takeTab(d)
 	if !ok {
 		return
 	}
@@ -198,13 +199,25 @@ func (a *App) promoteTab(d *tabDragState) {
 	root, err := layout.SplitSide(a.root, d.target, leaf, d.side)
 	if err != nil {
 		a.setStatus("%s", err)
-		a.putTabBack(d, mod, title)
+		a.putTabBack(d, mod, h)
 		a.nextPane--
 		return
 	}
 	a.root = root
 	a.modules[id] = mod
-	a.moduleNames[id] = "tabs-child"
+	name := h.Name
+	if name == "" {
+		name = "term"
+	}
+	a.moduleNames[id] = name
+	// Recorded as what it was built from, so a layout written later says what
+	// this pane holds rather than only that it holds something. What it was
+	// built with unless it can say better itself.
+	opts := h.Options
+	if live := valuesOf(mod); live != nil {
+		opts = live
+	}
+	a.paneSpecs[id] = config.PaneSpec{Module: name, Options: opts}
 	a.zoomed = 0
 	a.layoutChanged = true
 
@@ -212,28 +225,29 @@ func (a *App) promoteTab(d *tabDragState) {
 	a.setFocus(id)
 }
 
-// takeTab removes the tab being dragged from the pane it came from.
-func (a *App) takeTab(d *tabDragState) (module.Module, string, bool) {
-	src, ok := a.paneTabs(d.from)
-	if !ok {
-		return nil, "", false
+// takeTab removes the tab being dragged from the pane it came from, and says
+// what it was built from so a pane made out of it can be recorded.
+func (a *App) takeTab(d *tabDragState) (mod module.Module, h module.Held, ok bool) {
+	src, held := a.paneTabs(d.from)
+	if !held {
+		return nil, module.Held{}, false
 	}
-	mod, title, ok := src.Detach(d.index)
+	mod, h, ok = src.Detach(d.index)
 	if !ok {
 		a.setStatus("that tab is no longer there")
-		return nil, "", false
+		return nil, module.Held{}, false
 	}
-	if title == "" {
-		title = d.title
+	if h.Title == "" {
+		h.Title = d.title
 	}
-	return mod, title, true
+	return mod, h, true
 }
 
 // putTabBack returns a tab whose move fell through, so a failed drop costs
 // nothing rather than a session.
-func (a *App) putTabBack(d *tabDragState, mod module.Module, title string) {
+func (a *App) putTabBack(d *tabDragState, mod module.Module, h module.Held) {
 	if src, ok := a.paneTabs(d.from); ok {
-		if err := src.Adopt(mod, title); err == nil {
+		if err := src.Adopt(mod, h); err == nil {
 			return
 		}
 	}
@@ -263,6 +277,7 @@ func (a *App) afterTabLeft(d *tabDragState) {
 	}
 	delete(a.modules, d.from)
 	delete(a.moduleNames, d.from)
+	delete(a.paneSpecs, d.from)
 	a.root = root
 	a.zoomed = 0
 	a.layoutChanged = true
@@ -294,13 +309,18 @@ func (a *App) wrapInTabs(id layout.PaneID) bool {
 	if title == "" {
 		title = "pane"
 	}
-	if err := t.Adopt(held, title); err != nil {
+	if err := t.Adopt(held, module.Held{
+		Title: title, Name: a.moduleNames[id], Options: a.paneSpecs[id].Options,
+	}); err != nil {
 		_ = wrapper.Close()
 		a.setStatus("%s", err)
 		return false
 	}
 	a.modules[id] = wrapper
 	a.moduleNames[id] = "tabs"
+	// A pane of tabs describes itself, so nothing has to be remembered for it
+	// beyond what it is.
+	a.paneSpecs[id] = config.PaneSpec{Module: "tabs"}
 	a.relayout()
 	return true
 }
@@ -332,4 +352,12 @@ func (a *App) drawTabDrag(scr uv.Screen) {
 	if area.H > 0 && area.W > 2 {
 		render.Text(scr, area.X+1, area.Y+area.H/2, "▸ "+label, tabDropEdge, tabDropFill)
 	}
+}
+
+// valuesOf is what a module says it holds, or nothing when it cannot say.
+func valuesOf(mod module.Module) map[string]any {
+	if v, ok := mod.(interface{ Values() map[string]any }); ok {
+		return v.Values()
+	}
+	return nil
 }

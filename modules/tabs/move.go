@@ -40,11 +40,11 @@ func (m *Module) TabAt(x, y int) (int, bool) {
 // The pane may be left with no tabs at all. That is not an error here — the
 // application takes the empty pane out of the layout, which is what dragging
 // the last tab away is asking for.
-func (m *Module) Detach(i int) (module.Module, string, bool) {
+func (m *Module) Detach(i int) (mod module.Module, h module.Held, ok bool) {
 	m.mu.Lock()
 	if i < 0 || i >= len(m.tabs) {
 		m.mu.Unlock()
-		return nil, "", false
+		return nil, module.Held{}, false
 	}
 	going := m.tabs[i]
 	m.tabs = append(m.tabs[:i:i], m.tabs[i+1:]...)
@@ -59,7 +59,9 @@ func (m *Module) Detach(i int) (module.Module, string, bool) {
 	m.mu.Unlock()
 
 	m.wake()
-	return going.mod, going.title, true
+	// What it was built from travels with it: a tab promoted into a pane has
+	// to be recorded as something, and only the pane it came from knows.
+	return going.mod, module.Held{Title: going.title, Name: going.name, Options: going.opts}, true
 }
 
 // Adopt puts a module that is already running into a new tab, which becomes
@@ -67,11 +69,12 @@ func (m *Module) Detach(i int) (module.Module, string, bool) {
 // is a strange kind of arrival.
 //
 // Init is not called. It has been, wherever this module came from.
-func (m *Module) Adopt(mod module.Module, title string) error {
+func (m *Module) Adopt(mod module.Module, h module.Held) error {
 	if mod == nil {
 		return fmt.Errorf("tabs: nothing to adopt")
 	}
 	m.mu.Lock()
+	title := h.Title
 	if title == "" {
 		title = titleFor(mod, "tab")
 	}
@@ -80,7 +83,11 @@ func (m *Module) Adopt(mod module.Module, title string) error {
 	if inner < 1 {
 		inner = 1
 	}
-	m.tabs = append(m.tabs, &tab{title: title, name: nameOf(mod), mod: mod})
+	name := h.Name
+	if name == "" {
+		name = nameOf(mod)
+	}
+	m.tabs = append(m.tabs, &tab{title: title, name: name, opts: h.Options, mod: mod})
 	m.active = len(m.tabs) - 1
 	cols := m.cols
 	m.mu.Unlock()

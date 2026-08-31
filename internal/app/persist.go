@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"claudecontrol/internal/layout"
 	"claudecontrol/internal/module"
@@ -22,6 +23,43 @@ type Snapshot struct {
 	// Sessions are the Claude sessions that were open, in the order their
 	// panes appear. The next run hands them out in that order.
 	Sessions []string `json:"sessions"`
+
+	// Layout is the arrangement you left, in the shape the configuration file
+	// uses — so the same code builds it, and so it can be read by a person
+	// wondering what the application thinks it saved.
+	//
+	// Written only when you say so on the way out. An afternoon spent
+	// dragging things around to see how they look must not silently become
+	// the arrangement you get tomorrow.
+	Layout map[string]any `json:"layout,omitempty"`
+
+	// LayoutAt is when that arrangement was saved, which is what decides
+	// whether it or the configuration file starts the next run.
+	LayoutAt time.Time `json:"layout_at,omitempty"`
+}
+
+// chooseLayout picks the arrangement a run starts from, and says why when it
+// is not the saved one.
+//
+// The saved arrangement wins, unless the configuration file has been edited
+// since it was saved. In one sentence: your configuration wins if you have
+// edited it since. Without that rule, adding a pane to the configuration would
+// appear to do nothing, and a setting that seems not to work is worse than one
+// that does not exist.
+func chooseLayout(s Snapshot, cfgPath string) (map[string]any, string) {
+	if len(s.Layout) == 0 {
+		return nil, ""
+	}
+	st, err := os.Stat(cfgPath)
+	if err != nil {
+		// No configuration to have been edited. Whatever was saved is all
+		// there is.
+		return s.Layout, ""
+	}
+	if st.ModTime().After(s.LayoutAt) {
+		return nil, "config.yaml is newer than the saved layout, so it wins"
+	}
+	return s.Layout, ""
 }
 
 // SnapshotPath is where the snapshot lives.
@@ -40,6 +78,29 @@ func SnapshotPath() string {
 		base = filepath.Join(home, ".local", "state")
 	}
 	return filepath.Join(base, "claudecontrol", "state.json")
+}
+
+// saveLayout writes the arrangement down, if that is what was asked for on
+// the way out.
+//
+// It goes in beside the sessions rather than replacing them: the two are
+// answers to different questions — what was open, and how it was arranged —
+// and losing one to save the other would be a poor trade.
+func (a *App) saveLayout() {
+	path := SnapshotPath()
+	snap, _ := LoadSnapshot(path)
+	if !a.keepLayout {
+		// Cleared on purpose: the arrangement that was saved is no longer
+		// wanted, and leaving it would come back tomorrow.
+		snap.Layout, snap.LayoutAt = nil, time.Time{}
+	} else {
+		snap.Layout = a.layoutSpec()
+		snap.LayoutAt = time.Now()
+	}
+	if len(a.savedSessions) > 0 {
+		snap.Sessions = a.savedSessions
+	}
+	_ = SaveSnapshot(path, snap)
 }
 
 // SaveSnapshot writes the snapshot, creating its directory.
@@ -121,7 +182,15 @@ func (a *App) saveSnapshot() {
 		return
 	}
 	a.savedSessions = snap.Sessions
-	_ = SaveSnapshot(SnapshotPath(), snap)
+
+	// The arrangement is kept: this is called whenever a conversation opens or
+	// closes, and writing a fresh snapshot would throw away a layout saved on
+	// the way out of the last run.
+	path := SnapshotPath()
+	if prev, err := LoadSnapshot(path); err == nil {
+		snap.Layout, snap.LayoutAt = prev.Layout, prev.LayoutAt
+	}
+	_ = SaveSnapshot(path, snap)
 }
 
 func sameStrings(a, b []string) bool {

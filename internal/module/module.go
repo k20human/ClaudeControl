@@ -63,6 +63,19 @@ type Titler interface {
 	Title() (string, bool)
 }
 
+// Held is everything about a hosted module except the module itself: what it
+// is called, what it was built from, and what it was built with.
+//
+// It travels when something moves — a tab carried to another pane, or promoted
+// into a pane of its own — so that wherever it lands can be written down as
+// what it is. Only some modules can describe themselves; a term cannot, and
+// one recorded by name alone comes back as a bare shell.
+type Held struct {
+	Title   string
+	Name    string
+	Options map[string]any
+}
+
 // Sessioner is implemented by modules that hold conversations worth bringing
 // back. A module holding several — a pane of tabs — reports them all, in the
 // order they appear.

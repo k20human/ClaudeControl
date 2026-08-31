@@ -107,6 +107,23 @@ func Load(path string) (*Config, error) {
 	return &c, nil
 }
 
+// NodeFrom reads a layout the application wrote down itself.
+//
+// Through YAML rather than by hand: it is the same parser that reads what a
+// person wrote, so a saved arrangement that would not have been accepted in
+// the configuration file is not accepted here either.
+func NodeFrom(v map[string]any) (*NodeSpec, error) {
+	raw, err := yaml.Marshal(v)
+	if err != nil {
+		return nil, fmt.Errorf("config: saved layout: %w", err)
+	}
+	var spec NodeSpec
+	if err := yaml.Unmarshal(raw, &spec); err != nil {
+		return nil, fmt.Errorf("config: saved layout: %w", err)
+	}
+	return &spec, nil
+}
+
 // Build turns the specification into a layout tree and the pane specs that go
 // with it. Leaf ids are assigned in document order, starting at 1.
 func Build(c *Config) (*layout.Node, map[layout.PaneID]PaneSpec, error) {

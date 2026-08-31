@@ -12,8 +12,8 @@ import (
 // mover is what a pane must offer for a tab to leave it or arrive in it.
 type mover interface {
 	tabber
-	Detach(int) (module.Module, string, bool)
-	Adopt(module.Module, string) error
+	Detach(int) (module.Module, module.Held, bool)
+	Adopt(module.Module, module.Held) error
 	Reorder(int, int)
 	Count() int
 	ActiveIndex() int
@@ -43,12 +43,20 @@ func TestDetachHandsOverAModuleThatIsStillAlive(t *testing.T) {
 		return strings.Contains(paint(t, m, 50, 10).text(), "FIRST")
 	})
 
-	mod, title, ok := m.Detach(0)
+	mod, h, ok := m.Detach(0)
 	if !ok {
 		t.Fatal("Detach reported nothing to take")
 	}
-	if title != "one" {
-		t.Errorf("title = %q, want one", title)
+	if h.Title != "one" {
+		t.Errorf("title = %q, want one", h.Title)
+	}
+	// What it was built from and with travels with it: a term cannot describe
+	// itself, and a tab recorded by name alone comes back as a bare shell.
+	if h.Name != "term" {
+		t.Errorf("name = %q, want term", h.Name)
+	}
+	if h.Options["cmd"] == nil {
+		t.Errorf("the tab lost the command it was built with: %v", h.Options)
 	}
 	if mod == nil {
 		t.Fatal("Detach handed back no module")
@@ -77,8 +85,8 @@ func TestAdoptTakesAModuleThatIsAlreadyRunning(t *testing.T) {
 		return strings.Contains(paint(t, to, 50, 10).text(), "ONLY")
 	})
 
-	mod, title, _ := from.Detach(0)
-	if err := to.Adopt(mod, title); err != nil {
+	mod, h, _ := from.Detach(0)
+	if err := to.Adopt(mod, h); err != nil {
 		t.Fatalf("Adopt: %v", err)
 	}
 	if to.Count() != 2 {

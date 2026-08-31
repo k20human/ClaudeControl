@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/charmbracelet/x/vt"
 )
 
 // twoTabbedPanes is a split with a pane of tabs on each side: the arrangement
@@ -89,8 +91,7 @@ func TestATabDroppedOnAnotherPaneJoinsIt(t *testing.T) {
 
 	// The strip on the right now carries it, and the one on the left does not.
 	waitFor(t, snap, func(g *screen) bool {
-		right := g.row(0)[W/2:]
-		return strings.Contains(right, "goer")
+		return strings.Contains(stripHalf(g, true), "goer")
 	}, "the tab to arrive on the right")
 
 	// And its process came with it.
@@ -143,8 +144,7 @@ func TestATabDroppedOnAPlainPaneWrapsIt(t *testing.T) {
 
 	// The right-hand pane now has a strip carrying both.
 	waitFor(t, snap, func(g *screen) bool {
-		right := g.row(0)[W/2:]
-		return strings.Contains(right, "goer")
+		return strings.Contains(stripHalf(g, true), "goer")
 	}, "a strip on the right")
 	waitForAnywhere(t, snap, "GOER-HERE")
 
@@ -171,6 +171,23 @@ func TestDraggingTheLastTabAwayRemovesThePane(t *testing.T) {
 
 	waitForRow(t, snap, H-1, "1 pane")
 	waitForAnywhere(t, snap, "RIGHT-HERE")
+}
+
+// stripHalf is one half of the tab strip, safe on a screen that has not been
+// drawn yet: a trimmed row is shorter than the screen is wide.
+func stripHalf(g *screen, right bool) string {
+	row := g.row(0)
+	mid := g.w / 2
+	if len(row) < mid {
+		if right {
+			return ""
+		}
+		return row
+	}
+	if right {
+		return row[mid:]
+	}
+	return row[:mid]
 }
 
 // waitFor polls a condition against the screen.
@@ -231,8 +248,77 @@ func TestEscapeCancelsATabDrag(t *testing.T) {
 
 	// Still on the left, still two panes.
 	g := snap()
-	if !strings.Contains(g.row(0)[:W/2], "goer") {
+	if !strings.Contains(stripHalf(g, false), "goer") {
 		t.Errorf("the tab left its pane after the move was cancelled:\n%s", dump(g))
 	}
 	waitForRow(t, snap, H-1, "2 panes")
+}
+
+// The arrangement you leave is the one you get back. This is the gesture and
+// the saving together, which is the only way either is worth anything: move a
+// tab, quit with the box ticked, and open again on the same configuration.
+func TestTheArrangementSurvivesQuitting(t *testing.T) {
+	const W, H = 120, 20
+	cfg := twoTabbedPanes(t)
+	state := t.TempDir()
+
+	first, snap := runWithEnv(t, cfg, W, H, vt.Callbacks{}, []string{"XDG_STATE_HOME=" + state})
+	waitForAnywhere(t, snap, "LEFT-HERE")
+	click(t, first, 10, 5)
+
+	fromX, fromY := at(t, snap, "goer")
+	dragTab(t, first, fromX, fromY, 3*W/4, H/2)
+	waitFor(t, snap, func(g *screen) bool {
+		return strings.Contains(stripHalf(g, true), "goer")
+	}, "the tab to move")
+
+	// Quit with the box as it comes: ticked.
+	first.SendText("\x1bq")
+	waitForAnywhere(t, snap, "save this layout")
+	if g := snap(); !anywhere(g, "[x] save this layout") {
+		t.Fatalf("the box is not ticked to begin with:\n%s", dump(g))
+	}
+	first.SendText("\r")
+	time.Sleep(700 * time.Millisecond)
+
+	// Open again on the same configuration, which has not been touched since.
+	second, snap2 := runWithEnv(t, cfg, W, H, vt.Callbacks{}, []string{"XDG_STATE_HOME=" + state})
+	_ = second
+	waitFor(t, snap2, func(g *screen) bool {
+		return strings.Contains(stripHalf(g, true), "goer")
+	}, "the moved tab to come back on the right")
+}
+
+// And editing the configuration puts it back in charge, so a pane added there
+// is a pane you see.
+func TestEditingTheConfigurationBeatsTheSavedArrangement(t *testing.T) {
+	const W, H = 120, 20
+	cfg := twoTabbedPanes(t)
+	state := t.TempDir()
+
+	first, snap := runWithEnv(t, cfg, W, H, vt.Callbacks{}, []string{"XDG_STATE_HOME=" + state})
+	waitForAnywhere(t, snap, "LEFT-HERE")
+	click(t, first, 10, 5)
+	fromX, fromY := at(t, snap, "goer")
+	dragTab(t, first, fromX, fromY, 3*W/4, H/2)
+	waitFor(t, snap, func(g *screen) bool {
+		return strings.Contains(stripHalf(g, true), "goer")
+	}, "the tab to move")
+	first.SendText("\x1bq")
+	waitForAnywhere(t, snap, "save this layout")
+	first.SendText("\r")
+	time.Sleep(700 * time.Millisecond)
+
+	// Touched since.
+	later := time.Now().Add(2 * time.Second)
+	if err := os.Chtimes(cfg, later, later); err != nil {
+		t.Fatal(err)
+	}
+
+	second, snap2 := runWithEnv(t, cfg, W, H, vt.Callbacks{}, []string{"XDG_STATE_HOME=" + state})
+	_ = second
+	waitFor(t, snap2, func(g *screen) bool {
+		return strings.Contains(stripHalf(g, false), "goer")
+	}, "the configuration's arrangement")
+	waitForAnywhere(t, snap2, "config.yaml is newer")
 }

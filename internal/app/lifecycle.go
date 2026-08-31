@@ -6,6 +6,7 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 
+	"claudecontrol/internal/config"
 	"claudecontrol/internal/layout"
 	"claudecontrol/internal/module"
 	"claudecontrol/internal/session"
@@ -33,6 +34,7 @@ func (a *App) newPane(o layout.Orientation) error {
 	a.root = root
 	a.modules[id] = m
 	a.moduleNames[id] = "claude"
+	a.paneSpecs[id] = config.PaneSpec{Module: "claude"}
 	a.zoomed = 0
 	a.layoutChanged = true
 	a.relayout()
@@ -51,6 +53,8 @@ func (a *App) closePane(id layout.PaneID) error {
 		return err
 	}
 	delete(a.modules, id)
+	delete(a.moduleNames, id)
+	delete(a.paneSpecs, id)
 
 	root, err := layout.Remove(a.root, id)
 	if err != nil {

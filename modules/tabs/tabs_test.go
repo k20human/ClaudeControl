@@ -463,10 +463,10 @@ func TestEveryInterfaceTheApplicationLooksForIsPassedThrough(t *testing.T) {
 		// how to give it up, and how to take one in.
 		{"TabAt", implements[interface{ TabAt(int, int) (int, bool) }](m)},
 		{"Detach", implements[interface {
-			Detach(int) (module.Module, string, bool)
+			Detach(int) (module.Module, module.Held, bool)
 		}](m)},
 		{"Adopt", implements[interface {
-			Adopt(module.Module, string) error
+			Adopt(module.Module, module.Held) error
 		}](m)},
 		{"Reorder", implements[interface{ Reorder(int, int) }](m)},
 		{"Values", implements[interface{ Values() map[string]any }](m)},

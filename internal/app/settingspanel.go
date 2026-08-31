@@ -81,6 +81,19 @@ func (a *App) layoutSpec() map[string]any {
 		switch n.Kind {
 		case layout.KindLeaf:
 			out := map[string]any{"module": a.moduleName(n.PaneID)}
+			// What it was built from, so a module that cannot describe itself
+			// still comes back as itself. Without this a supervisor is written
+			// down as a supervisor with no services.
+			if spec, known := a.paneSpecs[n.PaneID]; known {
+				if spec.Module != "" {
+					out["module"] = spec.Module
+				}
+				if len(spec.Options) > 0 {
+					out["options"] = spec.Options
+				}
+			}
+			// And a module that can speak for itself is asked, because it
+			// holds what it holds now rather than what it was handed.
 			if m, ok := a.modules[n.PaneID]; ok {
 				if v, ok := m.(valued); ok {
 					out["options"] = v.Values()
