@@ -141,10 +141,15 @@ func (a *App) handleKey(e uv.KeyPressEvent) {
 		return
 	}
 
-	// A pane in flight takes escape, and nothing else: every other key still
-	// reaches the guest, so a drag started by accident costs one keystroke.
+	// A pane or a tab in flight takes escape, and nothing else: every other
+	// key still reaches the guest, so a drag started by accident costs one
+	// keystroke.
 	if a.paneDrag != nil && e.MatchString("esc") {
 		a.cancelPaneDrag()
+		return
+	}
+	if a.tabDrag != nil && e.MatchString("esc") {
+		a.cancelTabDrag()
 		return
 	}
 

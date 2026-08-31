@@ -84,6 +84,17 @@ func (a *App) handleMouse(ev uv.MouseEvent, m uv.Mouse) {
 
 	a.pointerX, a.pointerY = m.X, m.Y
 
+	// A tab in flight owns the pointer until it lands.
+	if a.tabDrag != nil {
+		switch ev.(type) {
+		case uv.MouseMotionEvent:
+			a.updateTabDrag(m.X, m.Y)
+		case uv.MouseReleaseEvent:
+			a.finishTabDrag()
+		}
+		return
+	}
+
 	// An open menu owns the pointer, the way every menu does.
 	if a.menuMouse(ev, m) {
 		return
@@ -244,6 +255,12 @@ func (a *App) handleMouse(ev uv.MouseEvent, m uv.Mouse) {
 	r := a.contentRect(id)
 	if m.Y < r.Y {
 		return
+	}
+	// A press on a tab's label arms a move. The press is forwarded all the
+	// same, so the tab you are dragging is the one you are looking at; if the
+	// pointer never leaves the label, that is all it was.
+	if click, isClick := ev.(uv.MouseClickEvent); isClick && uv.Mouse(click).Button == uv.MouseLeft {
+		a.armTabDrag(id, m.X-r.X, m.Y-r.Y)
 	}
 	if mod, ok := a.modules[id].(module.Inputter); ok {
 		mod.Mouse(translate(ev, r.X, r.Y))

@@ -459,6 +459,16 @@ func TestEveryInterfaceTheApplicationLooksForIsPassedThrough(t *testing.T) {
 		}](m)},
 		{"CanFind", implements[interface{ CanFind() bool }](m)},
 		{"SelectSession", implements[interface{ SelectSession(string) bool }](m)},
+		// What moving a tab with the pointer needs: which tab was pressed,
+		// how to give it up, and how to take one in.
+		{"TabAt", implements[interface{ TabAt(int, int) (int, bool) }](m)},
+		{"Detach", implements[interface {
+			Detach(int) (module.Module, string, bool)
+		}](m)},
+		{"Adopt", implements[interface {
+			Adopt(module.Module, string) error
+		}](m)},
+		{"Reorder", implements[interface{ Reorder(int, int) }](m)},
 		{"Values", implements[interface{ Values() map[string]any }](m)},
 		{"Title", implements[interface{ Title() (string, bool) }](m)},
 		{"Cursor", implements[module.Cursorer](m)},

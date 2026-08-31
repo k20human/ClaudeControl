@@ -82,7 +82,7 @@ const (
 
 // New builds the module from its configuration.
 func New(cfg map[string]any) (module.Module, error) {
-	raw, _ := cfg["tabs"].([]any)
+	raw, listed := cfg["tabs"].([]any)
 	m := &Module{}
 	for _, item := range raw {
 		spec, ok := item.(map[string]any)
@@ -104,9 +104,13 @@ func New(cfg map[string]any) (module.Module, error) {
 		}
 		m.tabs = append(m.tabs, &tab{title: title, name: name, mod: child})
 	}
-	if len(m.tabs) == 0 {
-		// A pane with nothing in it. One is allowed, since tabs are added and
-		// closed as you work and a pane may well be down to its last.
+	if len(m.tabs) == 0 && !listed {
+		// No tabs and nothing saying so is a mistake in the configuration,
+		// and one worth naming: the pane would draw an empty strip for ever.
+		//
+		// An empty list, on the other hand, is deliberate. It is how the
+		// application asks for a pane to pour tabs into — wrapping a pane
+		// that was not one, when a tab is dropped on it.
 		return nil, fmt.Errorf("tabs: no %q configured", "tabs")
 	}
 	return m, nil

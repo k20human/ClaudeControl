@@ -110,6 +110,9 @@ type App struct {
 	waitingMark map[string]bool
 	bellPending atomic.Bool
 
+	// tabDrag is the tab being carried to another pane, if any.
+	tabDrag *tabDragState
+
 	// conv is the open search across the conversations on disk.
 	conv *convSearch
 
@@ -580,6 +583,7 @@ func (a *App) draw() {
 	a.drawSessionPanel(a.scr)
 	a.drawSettingsPanel(a.scr)
 	a.drawPaneDrag(a.scr)
+	a.drawTabDrag(a.scr)
 	a.drawFind(a.scr)
 	a.drawConvSearch(a.scr)
 	a.drawMenu(a.scr)

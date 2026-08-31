@@ -94,6 +94,24 @@ func Leaves(root *Node) []PaneID {
 	return out
 }
 
+// SplitSide inserts a new leaf on one side of a pane.
+//
+// Move does this with a pane that already exists somewhere else; this does it
+// with one that does not exist yet, which is what promoting a tab into a pane
+// of its own needs. SideSwap has no meaning here — there is nothing to swap
+// with — and is refused rather than guessed at.
+func SplitSide(root *Node, target PaneID, leaf *Node, side Side) (*Node, error) {
+	if side == SideSwap {
+		return nil, fmt.Errorf("layout: a new pane has nothing to swap with")
+	}
+	o := Horizontal
+	if side == SideTop || side == SideBottom {
+		o = Vertical
+	}
+	before := side == SideLeft || side == SideTop
+	return splitAt(root, target, leaf, o, before)
+}
+
 // Split inserts leaf next to the pane identified by target.
 //
 // When the target's parent already divides along o, leaf becomes a sibling and

@@ -544,6 +544,19 @@ resize. `alt`-drag a pane to move it: dropping it on the middle of another
 **swaps** the two, dropping it on a side **inserts** it there. Everything else
 goes to the guest, translated into the coordinates it expects.
 
+**Drag a tab by its label** to move it. Dropped on the middle of another pane
+of tabs it joins that pane; on the middle of a pane that is not one, the target
+is wrapped in a pane of tabs holding both; on an **edge** it becomes a pane of
+its own, split off that side. Dragged along its own strip it is reordered.
+Escape gives up on the move, and a press that never leaves the label is what it
+has always been — the tab being selected.
+
+What moves is the running module, not a copy, and nothing is re-initialised: a
+Claude module's identity is a uuid made when it starts, and that uuid names its
+transcript, reports its hooks and keys its state. A moved conversation is the
+same conversation. Taking the last tab out of a pane takes the pane with it,
+its share going back to its neighbours the way a closed pane's does.
+
 **Right-click** opens a small menu on the pane: copy, paste, find here, new
 session, close, zoom, move. It exists because turning mouse reporting on takes
 the right button away from the terminal, and with it the menu the terminal
