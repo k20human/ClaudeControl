@@ -200,3 +200,28 @@ func TestAZombieIsNotAlive(t *testing.T) {
 	}
 	_ = cmd.Wait()
 }
+
+// A program that rewrites its own process title reports one argument with
+// spaces in it rather than the arguments it was started with. npm does — a
+// service configured as [npm, run, dev] appears in /proc as the single string
+// "npm run dev" — and a supervisor that compared them element by element could
+// never recognise its own service as already running. It would then start a
+// second copy, and two servers would fight over one port.
+func TestArgvMatchesAProcessThatRewroteItsTitle(t *testing.T) {
+	for _, c := range []struct {
+		name       string
+		got, want  []string
+		shouldPass bool
+	}{
+		{"as started", []string{"npm", "run", "dev"}, []string{"npm", "run", "dev"}, true},
+		{"title rewritten", []string{"npm run dev"}, []string{"npm", "run", "dev"}, true},
+		{"the other way round", []string{"npm", "run", "dev"}, []string{"npm run dev"}, true},
+		{"a different script", []string{"npm run build"}, []string{"npm", "run", "dev"}, false},
+		{"a different program", []string{"yarn run dev"}, []string{"npm", "run", "dev"}, false},
+		{"nothing at all", nil, []string{"npm", "run", "dev"}, false},
+	} {
+		if got := procs.SameArgv(c.got, c.want); got != c.shouldPass {
+			t.Errorf("%s: SameArgv(%v, %v) = %v", c.name, c.got, c.want, got)
+		}
+	}
+}

@@ -162,7 +162,7 @@ func Find(dir string, argv []string) ([]Proc, error) {
 	}
 	var out []Proc
 	for _, p := range all {
-		if p.Cwd != want || !sameArgv(p.Cmdline, argv) {
+		if p.Cwd != want || !SameArgv(p.Cmdline, argv) {
 			continue
 		}
 		out = append(out, p)
@@ -170,16 +170,26 @@ func Find(dir string, argv []string) ([]Proc, error) {
 	return out, nil
 }
 
-func sameArgv(got, want []string) bool {
-	if len(got) != len(want) {
+// SameArgv reports whether a process is running the command we mean.
+//
+// Compared as one string rather than argument by argument, because a program
+// that rewrites its own process title reports one argument with spaces in it
+// instead of the arguments it was started with. npm does: a service started as
+// [npm, run, dev] appears in /proc as the single string "npm run dev", and an
+// element-by-element comparison fails on the length before it looks at
+// anything. A supervisor that could not recognise its own running service
+// would start a second copy, and two servers would fight over one port.
+//
+// The price is that a command whose arguments contain spaces could in
+// principle be confused with a different splitting of the same words. Both
+// would have to be running in the same directory to be confused at all, which
+// is a coincidence worth accepting for a check that otherwise misses every
+// program that names itself.
+func SameArgv(got, want []string) bool {
+	if len(got) == 0 || len(want) == 0 {
 		return false
 	}
-	for i := range got {
-		if got[i] != want[i] {
-			return false
-		}
-	}
-	return true
+	return strings.Join(got, " ") == strings.Join(want, " ")
 }
 
 // Descendants lists a process and everything it started, deepest last.

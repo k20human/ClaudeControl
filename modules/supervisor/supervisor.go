@@ -373,15 +373,12 @@ func descend(children map[int][]int, pid int) []int {
 // The directory alone would not do: a project can run two scripts at once,
 // which is exactly what a front end and its back end do.
 func matches(p procs.Proc, spec Spec) bool {
-	if p.Cwd != spec.Dir || len(p.Cmdline) != len(spec.Argv) {
-		return false
-	}
-	for i := range p.Cmdline {
-		if p.Cmdline[i] != spec.Argv[i] {
-			return false
-		}
-	}
-	return true
+	// Through procs.SameArgv rather than compared here, because there is one
+	// rule about what "the same command" means and it belongs in one place. A
+	// second copy of it is a second thing to be wrong: this one compared
+	// argument by argument, and so could never recognise a service whose
+	// program had renamed itself — which npm does to every one of them.
+	return p.Cwd == spec.Dir && procs.SameArgv(p.Cmdline, spec.Argv)
 }
 
 // tellRelaysLocked passes the pane's size on to the terminals the relays own,

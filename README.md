@@ -228,7 +228,11 @@ as the pane was open and no amount of scanning could correct it.
 
 **Services already running are adopted.** The module walks `/proc` every five
 seconds, and on demand with `⟲ scan`, and takes over any process whose working
-directory *and* command line both match — the directory alone would not do,
+directory matches and whose command line means the same thing — as one string,
+not argument by argument, because a program that renames itself reports one
+argument with spaces in it. `npm` does exactly that: a service configured as
+`[npm, run, dev]` appears in `/proc` as the single string `npm run dev`, and
+comparing them piecewise fails on the length before it looks at anything — the directory alone would not do,
 since a project can run a front end and a back end at once. A service you
 started in another terminal can then be watched, stopped and restarted from
 here. Its **output cannot be read**: that output went wherever it was going
