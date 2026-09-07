@@ -293,21 +293,40 @@ func New(cfgPath string) (*App, error) {
 	return a, nil
 }
 
-// resumable drops the sessions that cannot be resumed.
+// resumable drops the sessions that cannot be resumed, and names each one
+// once.
 //
 // A session that was opened and never spoken to has no transcript, and asking
 // Claude Code to resume it fails with "no conversation found with session ID"
 // — an error on the pane, at startup, about something the person did not do
 // and can do nothing about. Checking first turns that into a fresh pane, which
 // is what they wanted anyway.
+//
+// Once, because a conversation is one thing. A list naming it twice would put
+// it in two panes, which means two Claude Code processes writing to it and one
+// state for both of them: a turn in either lights the working mark on both.
 func resumable(ids []string) []string {
 	out := make([]string, 0, len(ids))
+	seen := make(map[string]bool, len(ids))
 	for _, id := range ids {
-		if transcript.Exists(id) {
-			out = append(out, id)
+		if seen[id] || !transcript.Exists(id) {
+			continue
 		}
+		seen[id] = true
+		out = append(out, id)
 	}
 	return out
+}
+
+// withoutID is the list without one id, which is how a conversation claimed by
+// a pane stops being on offer to the next one.
+func withoutID(ids []string, drop string) []string {
+	for i, id := range ids {
+		if id == drop {
+			return append(ids[:i:i], ids[i+1:]...)
+		}
+	}
+	return ids
 }
 
 // withResume gives a pane about to be built the session it had last time.
@@ -316,13 +335,23 @@ func resumable(ids []string) []string {
 // the panes between runs therefore hands a conversation to a different pane —
 // predictable, and far less surprising than losing it. A resume written in the
 // configuration by hand always wins: it was put there on purpose.
+//
+// A pane that names its own conversation takes it out of the list. The saved
+// arrangement and the recorded list come from the same run and name the same
+// conversations, so leaving it there handed the next pane without one of its
+// own the conversation this pane was already showing — two panes resuming one
+// conversation, and, because the state of a session is keyed on the identity
+// they then share, one working mark lighting both.
 func withResume(name string, opts map[string]any, pending *[]string) map[string]any {
 	switch name {
 	case "claude":
 		if len(*pending) == 0 {
 			return opts
 		}
-		if _, set := opts["resume"]; set {
+		if raw, set := opts["resume"]; set {
+			if mine, _ := raw.(string); mine != "" {
+				*pending = withoutID(*pending, mine)
+			}
 			return opts
 		}
 		id := (*pending)[0]

@@ -226,3 +226,77 @@ func TestTheSnapshotRecordsWhatClaudeCodeCallsItNow(t *testing.T) {
 		t.Errorf("liveSession invented %q", got)
 	}
 }
+
+// A pane that names its own conversation takes it off the list.
+//
+// The saved arrangement and the recorded list come from the same run and name
+// the same conversations. Taking the id from the arrangement and leaving it in
+// the list gave the next pane without a conversation of its own the one this
+// pane was already showing: two panes resuming one conversation, two Claude
+// Code processes writing to it, and — because the state of a session is keyed
+// on the identity they now share — one working mark lighting both tabs.
+func TestAConversationClaimedByAPaneIsNotHandedOutAgain(t *testing.T) {
+	pending := []string{"shared", "other"}
+
+	first := withResume("claude", map[string]any{"resume": "shared"}, &pending)
+	second := withResume("claude", nil, &pending)
+
+	if first["resume"] != "shared" {
+		t.Errorf("the pane lost the conversation it named: %v", first)
+	}
+	if second["resume"] == "shared" {
+		t.Fatalf("two panes were given the same conversation: %v and %v", first, second)
+	}
+	if second["resume"] != "other" {
+		t.Errorf("the next pane got %v, want the next conversation on the list", second["resume"])
+	}
+}
+
+// The same thing one level down, which is where it actually happened: the
+// panes were tabs.
+func TestATabThatNamesItsConversationTakesItOffTheList(t *testing.T) {
+	pending := []string{"shared", "other"}
+	opts := map[string]any{"tabs": []any{
+		map[string]any{"module": "claude", "options": map[string]any{"resume": "shared"}},
+		map[string]any{"module": "claude"},
+	}}
+
+	got := withResume("tabs", opts, &pending)
+	tabs, _ := got["tabs"].([]any)
+	if len(tabs) != 2 {
+		t.Fatalf("the tabs were lost: %v", got)
+	}
+	first, _ := tabs[0].(map[string]any)["options"].(map[string]any)
+	second, _ := tabs[1].(map[string]any)["options"].(map[string]any)
+	if first["resume"] != "shared" {
+		t.Errorf("the first tab lost its conversation: %v", first)
+	}
+	if second["resume"] == "shared" {
+		t.Fatalf("both tabs were given %q", "shared")
+	}
+	if second["resume"] != "other" {
+		t.Errorf("the second tab got %v", second["resume"])
+	}
+}
+
+// A conversation is one thing, so it is offered once however many times it was
+// recorded — and a recorded id with no transcript is not offered at all.
+func TestARecordedConversationIsOfferedOnce(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", dir)
+	folder := filepath.Join(dir, "projects", "somewhere")
+	if err := os.MkdirAll(folder, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"kept", "also-kept"} {
+		if err := os.WriteFile(filepath.Join(folder, id+".jsonl"), []byte("{}\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got := resumable([]string{"kept", "kept", "also-kept", "never-spoken-to"})
+	want := []string{"kept", "also-kept"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("resumable = %v, want %v", got, want)
+	}
+}
