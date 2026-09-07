@@ -45,8 +45,20 @@ func (m *Module) drawStrip(scr uv.Screen, area uv.Rectangle) {
 	plusW := ansi.StringWidth(plusLabel)
 	limit := area.Max.X - plusW
 
-	x, hidden := area.Min.X, 0
+	// The tabs fill the strip, the way a terminal's do, rather than hugging
+	// the left edge and leaving the rest as background. A row of small
+	// buttons does not read as tabs, and it asks for more aim than a tab
+	// should: the whole share is the target.
+	shown, hidden := m.fitLocked(limit - area.Min.X)
+	shares := shareOut(limit-area.Min.X, shown)
+
+	x := area.Min.X
 	for i, t := range m.tabs {
+		if i >= shown {
+			t.x, t.w, t.closeX = 0, 0, 0
+			continue
+		}
+		w := shares[i]
 		label := " " + t.title + " "
 		if t.known {
 			// The same mark as everywhere else: one meaning per shape.
@@ -55,14 +67,17 @@ func (m *Module) drawStrip(scr uv.Screen, area uv.Rectangle) {
 		// The cross is on the tab you are looking at and no other. It saves
 		// the width of one on every tab, and it means a stray click cannot
 		// close something you were not even reading.
-		if i == m.active && len(m.tabs) > 1 {
-			label += closeLabel + " "
-		}
-		w := ansi.StringWidth(label)
-		if x+w > limit {
-			t.x, t.w, t.closeX = 0, 0, 0
-			hidden++
-			continue
+		closing := i == m.active && len(m.tabs) > 1
+		if closing {
+			// The title is padded out first so the cross lands at the right
+			// edge of the tab, which is where its clickable region is
+			// recorded. Drawn anywhere else, the cross you can see and the
+			// cross you can press are two different things.
+			cw := ansi.StringWidth(closeLabel)
+			head := padTab(clipTab(label, w-cw-1), w-cw-1)
+			label = head + closeLabel + " "
+		} else {
+			label = padTab(clipTab(label, w), w)
 		}
 		fg, bg := color.Color(fgIdle), color.Color(bgStrip)
 		switch {
@@ -74,20 +89,23 @@ func (m *Module) drawStrip(scr uv.Screen, area uv.Rectangle) {
 			fg = indicator.Colour(t.state)
 		}
 		render.Fill(scr, uv.Rect(x, area.Min.Y, w, 1), bg)
-		render.Text(scr, x, area.Min.Y, label, fg, bg)
+		render.Text(scr, x, area.Min.Y, padTab(label, w), fg, bg)
 		// Recorded pane-local, because that is how the pointer arrives: the
 		// application translates a click into the pane's own coordinates
 		// before the module ever sees it.
 		t.x, t.w, t.closeX = x-area.Min.X, w, 0
-		if i == m.active && len(m.tabs) > 1 {
+		if closing {
 			t.closeX = x - area.Min.X + w - 1 - ansi.StringWidth(closeLabel)
 		}
 		x += w
 	}
 
 	if hidden > 0 {
+		// Over the end of the last tab: there is no spare room to put it in
+		// once the tabs have taken all of it, and the count matters more than
+		// the last letters of a title.
 		mark := "…" + itoa(hidden)
-		if at := limit - ansi.StringWidth(mark); at > x {
+		if at := limit - ansi.StringWidth(mark); at >= area.Min.X {
 			render.Text(scr, at, area.Min.Y, mark, fgWaiting, bgStrip)
 		}
 	}

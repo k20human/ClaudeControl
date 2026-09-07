@@ -18,6 +18,7 @@ import (
 	"claudecontrol/internal/pool"
 	"claudecontrol/internal/session"
 	"claudecontrol/internal/settings"
+	"claudecontrol/internal/transcript"
 	"claudecontrol/internal/usage"
 )
 
@@ -186,9 +187,15 @@ func titleFor(child module.Module, name string) string {
 // uniqueTitleLocked numbers a title that is already taken. Three tabs all
 // reading "claude" would be three tabs you cannot tell apart.
 func (m *Module) uniqueTitleLocked(want string) string {
+	return m.uniqueTitleExceptLocked(want, nil)
+}
+
+// uniqueTitleExceptLocked is the same, ignoring one tab — the one being
+// renamed, which would otherwise collide with the name it already has.
+func (m *Module) uniqueTitleExceptLocked(want string, self *tab) string {
 	taken := func(s string) bool {
 		for _, t := range m.tabs {
-			if t.title == s {
+			if t != self && t.title == s {
 				return true
 			}
 		}
@@ -264,6 +271,25 @@ func (m *Module) Init(ctx module.Context) error {
 	if ctx.Bus == nil {
 		return nil
 	}
+	// The name Claude Code gave a conversation, once it has given one.
+	//
+	// A tab is named after its directory to begin with, which for three tabs
+	// in one project reads "DEV", "DEV 2", "DEV 3" and says nothing about
+	// which is which. The pane title has followed the session's real name from
+	// the start; the strip that replaced the pane title has to as well.
+	names := ctx.Bus.SubscribeState(transcript.NameTopic)
+	go func() {
+		for v := range names {
+			named, ok := v.(transcript.SessionName)
+			if !ok || named.Name == "" {
+				continue
+			}
+			if m.rename(named.SessionID, named.Name) && ctx.Wake != nil {
+				ctx.Wake()
+			}
+		}
+	}()
+
 	// A session that wants something while you are on another tab has to be
 	// able to say so.
 	states := ctx.Bus.SubscribeState(pool.StateTopic)
@@ -440,6 +466,25 @@ func (m *Module) SessionID() string {
 
 // Sessions are the conversations in every tab, in order — not only the one on
 // screen. A tab you were not looking at is still one you want back.
+// rename gives a tab the name Claude Code gave its conversation, and reports
+// whether anything changed.
+func (m *Module) rename(id, name string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, t := range m.tabs {
+		holder, ok := t.mod.(interface{ SessionID() string })
+		if !ok || holder.SessionID() != id {
+			continue
+		}
+		if t.title == name {
+			return false
+		}
+		t.title = m.uniqueTitleExceptLocked(name, t)
+		return true
+	}
+	return false
+}
+
 // SelectSession brings the tab holding a conversation to the front, and
 // reports whether it found one. It is how the application acts on a session
 // rather than on a pane: what is waiting on you is a conversation, and the tab

@@ -91,6 +91,19 @@ func (a *App) updateTabDrag(x, y int) {
 	a.Wake()
 }
 
+// onStripRow reports whether a point is on a pane's tab strip at all —
+// a tab, the cross, the plus or the space between them.
+//
+// The whole strip is chrome. It is what lets a click reach it on a pane that
+// does not have the focus: the swallowed first click protects what is inside a
+// pane from a stray gesture, and a strip is not inside it.
+func (a *App) onStripRow(id layout.PaneID, y int) bool {
+	if _, ok := a.paneTabs(id); !ok {
+		return false
+	}
+	return y == a.contentRect(id).Y
+}
+
 // overStrip reports whether a point is on a pane's tab strip.
 func (a *App) overStrip(id layout.PaneID, x, y int) bool {
 	r := a.contentRect(id)

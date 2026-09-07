@@ -322,3 +322,66 @@ func TestEditingTheConfigurationBeatsTheSavedArrangement(t *testing.T) {
 	}, "the configuration's arrangement")
 	waitForAnywhere(t, snap2, "config.yaml is newer")
 }
+
+// A tab is chrome, not guest content. The first click on an unfocused pane is
+// swallowed so that moving between panes can never trigger something inside
+// the one you land on — but that protects the guest, and a tab strip is not
+// the guest. Having to click a pane before you can pick up one of its tabs is
+// a rule nobody can see.
+func TestATabCanBeDraggedFromAPaneThatIsNotFocused(t *testing.T) {
+	const W, H = 120, 20
+	// The right pane keeps a second tab, so taking one from it does not
+	// remove the pane: this test is about reaching an unfocused strip, and a
+	// collapsing layout would move the halves under the assertion.
+	cfg := filepath.Join(t.TempDir(), "two.yaml")
+	body := `layout:
+  split: horizontal
+  ratios: [1, 1]
+  children:
+    - module: tabs
+      options:
+        tabs:
+          - { title: leftish, module: term, options: { cmd: [sh, -c, "printf LEFT-HERE; cat"] } }
+    - module: tabs
+      options:
+        tabs:
+          - { title: righty, module: term, options: { cmd: [sh, -c, "printf RIGHT-HERE; cat"] } }
+          - { title: stayer, module: term, options: { cmd: [sh, -c, "printf STAYS-HERE; cat"] } }
+`
+	if err := os.WriteFile(cfg, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, snap := run(t, cfg, W, H)
+	waitForAnywhere(t, snap, "LEFT-HERE")
+	waitForAnywhere(t, snap, "righty")
+
+	// Focus stays on the left pane; the tab comes from the right one.
+	click(t, s, 10, 5)
+
+	fromX, fromY := at(t, snap, "righty")
+	dragTab(t, s, fromX, fromY, W/4, H/2)
+
+	waitFor(t, snap, func(g *screen) bool {
+		return strings.Contains(stripHalf(g, false), "righty")
+	}, "the tab to arrive on the left")
+	waitForAnywhere(t, snap, "RIGHT-HERE")
+	// And the pane it came from is still there, with what it kept.
+	waitFor(t, snap, func(g *screen) bool {
+		return strings.Contains(stripHalf(g, true), "stayer")
+	}, "the pane it came from to keep its other tab")
+}
+
+// And a plain click on an unfocused pane's tab selects it, rather than being
+// spent on focusing the pane.
+func TestClickingATabOfAnUnfocusedPaneSelectsIt(t *testing.T) {
+	const W, H = 120, 20
+	s, snap := run(t, twoTabbedPanes(t), W, H)
+	waitForAnywhere(t, snap, "LEFT-HERE")
+	click(t, s, 3*W/4, 5) // focus the right pane
+	waitForAnywhere(t, snap, "RIGHT-HERE")
+
+	// From the right pane, click the left pane's second tab directly.
+	x, y := at(t, snap, "goer")
+	click(t, s, x, y)
+	waitForAnywhere(t, snap, "GOER-HERE")
+}

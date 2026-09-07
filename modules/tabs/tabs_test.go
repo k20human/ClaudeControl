@@ -247,9 +247,13 @@ func TestAHiddenTabCarriesItsSessionsMark(t *testing.T) {
 	}
 }
 
-// A label that does not fit is dropped whole and counted, so the strip never
-// lies about how many tabs there are.
-func TestALabelThatDoesNotFitIsDroppedAndCounted(t *testing.T) {
+// The strip never lies about how many tabs there are.
+//
+// A title too long for its share is shortened, the way a terminal shortens
+// one; a tab too many for the strip to divide is dropped and counted. The
+// first keeps the tabs filling the row, which is what makes them tabs rather
+// than a line of small buttons; the second keeps the count honest.
+func TestATabTooManyIsCountedRatherThanForgotten(t *testing.T) {
 	m := build(t, map[string]any{"tabs": []any{
 		map[string]any{"title": "supervisor", "module": "term", "options": shell("cat")},
 		map[string]any{"title": "statistics", "module": "term", "options": shell("cat")},
@@ -257,11 +261,15 @@ func TestALabelThatDoesNotFitIsDroppedAndCounted(t *testing.T) {
 	}}, module.Context{Wake: func() {}})
 
 	row := paint(t, m, 18, 6).row(0)
-	if strings.Contains(row, "…") {
-		t.Errorf("a label was cut: %q", row)
+	if !strings.Contains(row, "…") {
+		t.Errorf("the strip does not say what it could not fit: %q", row)
 	}
 	if !strings.Contains(row, "+") {
-		t.Errorf("the strip does not say what it dropped: %q", row)
+		t.Errorf("the + went missing from a full strip: %q", row)
+	}
+	// And what it says is a number, not a shrug.
+	if !strings.Contains(row, "…2") && !strings.Contains(row, "…1") {
+		t.Errorf("the count of what is hidden is missing: %q", row)
 	}
 }
 

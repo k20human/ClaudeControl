@@ -266,12 +266,21 @@ func (a *App) handleMouse(ev uv.MouseEvent, m uv.Mouse) {
 		return
 	}
 	if id != a.focus {
+		click, isClick := ev.(uv.MouseClickEvent)
+		if !isClick {
+			return
+		}
+		a.setFocus(id)
 		// The first click focuses and is swallowed, so moving to another pane
 		// can never trigger something inside the pane you are moving to.
-		if _, isClick := ev.(uv.MouseClickEvent); isClick {
-			a.setFocus(id)
+		//
+		// A tab strip is the exception, because it is not inside the pane: it
+		// is chrome, the way the status bar and the dividers are. Having to
+		// click a pane before you could pick up one of its tabs was a rule
+		// nobody could see, and picking up a tab is what the strip is for.
+		if !a.onStripRow(id, uv.Mouse(click).Y) {
+			return
 		}
-		return
 	}
 
 	// A click on the title row belongs to the chrome, not to the guest: the

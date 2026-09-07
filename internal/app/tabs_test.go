@@ -301,15 +301,18 @@ func TestTheStripOpensAndClosesTabs(t *testing.T) {
 
 	// The cross is on the tab in front of you and no other, so a stray click
 	// cannot close something you were not reading.
-	cross := columnOf(grown, "×")
+	// Read from the row as it is now: the tabs share the width, so the cross
+	// moves whenever a tab opens or closes.
+	nowRow := snap().row(0)
+	cross := columnOf(nowRow, "×")
 	if cross < 0 {
-		t.Fatalf("no × in the strip: %q", grown)
+		t.Fatalf("no × in the strip: %q", nowRow)
 	}
 	click(t, s, cross, 0)
 
 	deadline = time.Now().Add(4 * time.Second)
 	for time.Now().Before(deadline) {
-		if row := snap().row(0); len(row) <= len(before) {
+		if row := snap().row(0); tabCount(row) == tabCount(before) {
 			// And what remains is what was there first.
 			if !strings.Contains(row, "alpha") || !strings.Contains(row, "beta") {
 				t.Errorf("closing a tab took the others with it: %q", row)
@@ -318,5 +321,11 @@ func TestTheStripOpensAndClosesTabs(t *testing.T) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Errorf("the strip did not shrink after closing: %q", snap().row(0))
+	t.Errorf("the tab was not closed: %q", snap().row(0))
+}
+
+// tabCount is how many tabs a strip is showing, by their marks: every tab
+// carries one and nothing else in the row does.
+func tabCount(strip string) int {
+	return strings.Count(strip, "·")
 }

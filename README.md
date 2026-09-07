@@ -489,6 +489,12 @@ screen is working**, not where the application was launched from. A pane can
 say otherwise with its own `dir:`, and a directory asked for by name beats
 both. The same rule opens a new pane with `alt+n`.
 
+The tabs **fill the strip**, the way a terminal's do, sharing it evenly: a row
+of small buttons does not read as tabs, and a tab should be as wide a target as
+it looks. A title too long for its share is shortened; a tab too many for the
+strip to divide is dropped and counted, so the strip never lies about how many
+there are.
+
 For a window that is not wide enough to split again. Splitting is better when
 there is room — you see two things at once — so this is what you reach for when
 there is not.
@@ -569,7 +575,10 @@ appear:
 - **Above a pane**, before its name.
 - **In a tab strip**, before each label, which is what makes a hidden tab
   bearable: a session asking a question from a tab you are not looking at
-  colours its own label.
+  colours its own label. The label is the name Claude Code gave the
+  conversation once it has given one — three tabs in one project all reading
+  `DEV`, `DEV 2`, `DEV 3` tell you nothing about which is which, and the name
+  is the one thing that would.
 - **In the title of the terminal running the application**, summarised by
   whichever session most wants you — `◐ 1 waiting — ClaudeControl`. A session
   that has ended is left out of it: it is drawn as ended above its pane and in
@@ -656,7 +665,11 @@ resize. `alt`-drag a pane to move it: dropping it on the middle of another
 **swaps** the two, dropping it on a side **inserts** it there. Everything else
 goes to the guest, translated into the coordinates it expects.
 
-**Drag a tab by its label** to move it. Dropped on the middle of another pane
+**Drag a tab by its label** to move it — from any pane, focused or not. The
+first click on an unfocused pane is swallowed so that moving between panes
+cannot trigger something inside the one you land on, but that protects the
+guest and a tab strip is not the guest: it is chrome, the way the status bar
+and the dividers are. Dropped on the middle of another pane
 of tabs it joins that pane; on the middle of a pane that is not one, the target
 is wrapped in a pane of tabs holding both; on an **edge** it becomes a pane of
 its own, split off that side. Dragged along its own strip it is reordered.
