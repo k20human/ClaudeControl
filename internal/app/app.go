@@ -710,6 +710,14 @@ func (a *App) windowTitle() string {
 	states := make([]pool.State, 0, len(entries))
 	counts := map[pool.State]int{}
 	for _, e := range entries {
+		// A session that has ended asks nothing. It is drawn as ended above
+		// its pane and in its tab, where saying so is the point; a title
+		// reading "1 exited" until you closed the pane would be a permanent
+		// notice about something that needs no doing, in the one place that
+		// exists to tell you something does.
+		if e.State == pool.StateExited {
+			continue
+		}
 		states = append(states, e.State)
 		counts[e.State]++
 	}

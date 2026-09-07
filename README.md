@@ -571,7 +571,11 @@ appear:
   bearable: a session asking a question from a tab you are not looking at
   colours its own label.
 - **In the title of the terminal running the application**, summarised by
-  whichever session most wants you — `◐ 1 waiting — ClaudeControl`. That title
+  whichever session most wants you — `◐ 1 waiting — ClaudeControl`. A session
+  that has ended is left out of it: it is drawn as ended above its pane and in
+  its tab, where saying so is the point, but a title reading `1 exited` until
+  you closed the pane would be a permanent notice about something that needs no
+  doing, in the one place that exists to tell you something does. That title
   is the one thing you can see when the window is behind something else, which
   is exactly when a question would otherwise go unnoticed.
 
@@ -605,8 +609,17 @@ the tab holding that conversation is brought to the front. Pressed again it
 moves to the next one, so several are visited in turn rather than the same one
 twice.
 
-The mark comes from the session state the hooks report, not from the title
-Claude Code writes for itself. That title says the same thing, but as a string
+The mark comes from the session state the hooks report — with the process
+having the last word. The hooks are reports about a process; the process is the
+fact. A conversation that ended while it was waiting, killed or crashed or
+closed without its last hook arriving, used to keep the word "waiting" for as
+long as the application stayed open: the title said `2 waiting` over a single
+running session, and the key that goes to whatever is waiting had nowhere to
+go. A session whose process is gone now reads as ended, whatever was last
+reported about it, and stays in the list because a session that has ended is
+still worth listing.
+
+The mark does not come from the title Claude Code writes for itself. That title says the same thing, but as a string
 this application would have to guess at; the state arrives typed. Only the
 working mark turns, and the interface redraws for it **only while something is
 actually working** — an idle window stays idle.

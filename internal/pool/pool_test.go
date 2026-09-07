@@ -1,6 +1,7 @@
 package pool_test
 
 import (
+	"syscall"
 	"testing"
 	"time"
 
@@ -120,5 +121,54 @@ func TestAllHandsOutCopies(t *testing.T) {
 	e, _ := p.Get("e")
 	if e.Title != "portal" {
 		t.Fatalf("the pool's entry became %q; All handed out its own state", e.Title)
+	}
+}
+
+// A session whose process is gone is not waiting for you, whatever the last
+// hook said about it.
+//
+// The hooks are reports about a process; the process is the fact. A
+// conversation that ended while it was waiting — killed, crashed, or simply
+// closed without its last hook arriving — kept the word "waiting" for as long
+// as the application was open. The title said "2 waiting" over a single
+// running session, and the key that goes to what is waiting had nowhere to go.
+func TestASessionWhoseProcessIsGoneIsNotWaiting(t *testing.T) {
+	p := pool.New(bus.New())
+	s, err := session.Start(session.Spec{
+		ID: "goner", Argv: []string{"sh", "-c", "sleep 30"}, Dir: ".",
+		Width: 20, Height: 5,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	p.Add(s, "goner", ".")
+	p.SetState(s.ID, pool.StateWaiting)
+	if got := p.Waiting(); got != 1 {
+		t.Fatalf("Waiting = %d while it really was waiting", got)
+	}
+
+	// The process ends without anything telling the pool.
+	if err := syscall.Kill(s.Pid(), syscall.SIGKILL); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if st, _ := s.Status(); st == session.Exited {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	if got := p.Waiting(); got != 0 {
+		t.Errorf("Waiting = %d after the process died", got)
+	}
+	all := p.All()
+	if len(all) != 1 {
+		t.Fatalf("%d entries, want the session still listed", len(all))
+	}
+	if all[0].State != pool.StateExited {
+		t.Errorf("state = %v, want exited", all[0].State)
 	}
 }

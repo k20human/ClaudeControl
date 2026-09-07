@@ -61,6 +61,29 @@ func (p *Pool) Get(id session.ID) (*Entry, bool) {
 	return &c, true
 }
 
+// stateOf is what a session is doing, with the process having the last word.
+//
+// The hooks are reports about a process; the process is the fact. A
+// conversation that ended while it was waiting — killed, crashed, or closed
+// without its last hook arriving — used to keep the word "waiting" for as long
+// as the application stayed open: the title said "2 waiting" over a single
+// running session, and the key that goes to whatever is waiting had nowhere to
+// go.
+//
+// The entry is kept either way. A session that has ended is still worth
+// listing, and saying so is the point; saying it is waiting for you is not.
+func stateOf(e *Entry) State {
+	if e == nil {
+		return StateIdle
+	}
+	if e.Session != nil {
+		if st, _ := e.Session.Status(); st == session.Exited {
+			return StateExited
+		}
+	}
+	return e.State
+}
+
 // All returns copies of every entry, in the order they were added.
 func (p *Pool) All() []*Entry {
 	p.mu.RLock()
@@ -75,6 +98,7 @@ func (p *Pool) snapshotLocked() []*Entry {
 	for _, id := range p.order {
 		if e, ok := p.items[id]; ok {
 			c := *e
+			c.State = stateOf(e)
 			out = append(out, &c)
 		}
 	}
@@ -113,7 +137,7 @@ func (p *Pool) Waiting() int {
 	defer p.mu.RUnlock()
 	n := 0
 	for _, e := range p.items {
-		if e.State == StateWaiting {
+		if stateOf(e) == StateWaiting {
 			n++
 		}
 	}
