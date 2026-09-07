@@ -61,7 +61,9 @@ func (m *Module) Detach(i int) (mod module.Module, h module.Held, ok bool) {
 	m.wake()
 	// What it was built from travels with it: a tab promoted into a pane has
 	// to be recorded as something, and only the pane it came from knows.
-	return going.mod, module.Held{Title: going.title, Name: going.name, Options: going.opts}, true
+	return going.mod, module.Held{
+		Title: going.title, Name: going.name, Options: going.opts, Given: going.given,
+	}, true
 }
 
 // Adopt puts a module that is already running into a new tab, which becomes
@@ -87,7 +89,9 @@ func (m *Module) Adopt(mod module.Module, h module.Held) error {
 	if name == "" {
 		name = nameOf(mod)
 	}
-	m.tabs = append(m.tabs, &tab{title: title, name: name, opts: h.Options, mod: mod})
+	m.tabs = append(m.tabs, &tab{
+		title: title, name: name, opts: h.Options, mod: mod, given: h.Given,
+	})
 	m.active = len(m.tabs) - 1
 	cols := m.cols
 	m.mu.Unlock()

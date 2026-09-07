@@ -74,6 +74,10 @@ type Held struct {
 	Title   string
 	Name    string
 	Options map[string]any
+
+	// Given says the title was typed by hand rather than derived. It travels
+	// with the tab: a name you chose is not undone by moving what wears it.
+	Given bool
 }
 
 // Sessioner is implemented by modules that hold conversations worth bringing

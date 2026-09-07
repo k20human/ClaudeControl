@@ -57,6 +57,11 @@ type tab struct {
 	// closeX is where its cross was drawn, or zero if it had none.
 	x, w, closeX int
 
+	// given says the title is one you typed. The name Claude Code gives the
+	// conversation then stops applying: you named this tab on purpose, and
+	// having that undone a minute later by a machine is not a feature.
+	given bool
+
 	// state is what the session behind this tab is doing, so a tab you are not
 	// looking at can still say so. Without it, a hidden tab is a session you
 	// have forgotten.
@@ -442,7 +447,6 @@ func (m *Module) Account() (usage.Reading, bool) {
 	return usage.Reading{}, false
 }
 
-// SessionID is the session of the tab on screen, if it holds one.
 // Session is the process behind the tab on screen, if it has one.
 //
 // The application asks a pane whether its process is gone, and draws the
@@ -456,6 +460,7 @@ func (m *Module) Session() *session.Session {
 	return nil
 }
 
+// SessionID is the conversation of the tab on screen, if it holds one.
 func (m *Module) SessionID() string {
 	s, ok := m.Active().(interface{ SessionID() string })
 	if !ok {
@@ -464,10 +469,11 @@ func (m *Module) SessionID() string {
 	return s.SessionID()
 }
 
-// Sessions are the conversations in every tab, in order — not only the one on
-// screen. A tab you were not looking at is still one you want back.
 // rename gives a tab the name Claude Code gave its conversation, and reports
 // whether anything changed.
+//
+// A name you typed is left alone. Claude Code renames a conversation as it
+// goes, so without that a name of your own would last until the next turn.
 func (m *Module) rename(id, name string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -476,7 +482,7 @@ func (m *Module) rename(id, name string) bool {
 		if !ok || holder.SessionID() != id {
 			continue
 		}
-		if t.title == name {
+		if t.given || t.title == name {
 			return false
 		}
 		t.title = m.uniqueTitleExceptLocked(name, t)
@@ -515,6 +521,8 @@ func (m *Module) SelectSession(id string) bool {
 	return true
 }
 
+// Sessions are the conversations in every tab, in order — not only the one on
+// screen. A tab you were not looking at is still one you want back.
 func (m *Module) Sessions() []string {
 	m.mu.Lock()
 	defer m.mu.Unlock()

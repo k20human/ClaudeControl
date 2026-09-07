@@ -2,6 +2,7 @@ package app
 
 import (
 	"image/color"
+	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
 
@@ -69,7 +70,36 @@ func (a *App) armTabDrag(id layout.PaneID, localX, localY int) {
 	if !ok {
 		return
 	}
+	if a.secondClickOnTab(id, i) {
+		// A double-click on a label names it, the way it does on the tabs of
+		// an editor. The press has already selected the tab, so the prompt
+		// opens on the one you are looking at.
+		a.beginRenameTabAt(id, i)
+		return
+	}
 	a.tabDrag = &tabDragState{from: id, index: i, target: id, side: layout.SideSwap}
+}
+
+// tabPress is the last press on a label, which is all a double-click needs to
+// be recognised.
+type tabPress struct {
+	pane  layout.PaneID
+	index int
+	at    time.Time
+}
+
+// doubleClick is how long a second press on the same label still counts as
+// part of the first. Terminals do not report double-clicks, so this is the
+// application's own judgement of one.
+const doubleClick = 400 * time.Millisecond
+
+// secondClickOnTab records this press and reports whether it completes a
+// double-click on the same label.
+func (a *App) secondClickOnTab(id layout.PaneID, i int) bool {
+	now := time.Now()
+	was := a.lastTabPress
+	a.lastTabPress = tabPress{pane: id, index: i, at: now}
+	return was.pane == id && was.index == i && now.Sub(was.at) < doubleClick
 }
 
 // updateTabDrag follows the pointer, and is what turns a press into a move.

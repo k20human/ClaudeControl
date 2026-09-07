@@ -116,3 +116,119 @@ func TestEveryTabTakesItsNameWhenSeveralArriveAtOnce(t *testing.T) {
 		return true
 	})
 }
+
+// A name you type is yours. Claude Code renames a conversation as it goes, so
+// a name of your own that anything published could overwrite would be a name
+// that lasted until the next turn.
+func TestANameYouTypeSurvivesTheNameClaudeCodeGives(t *testing.T) {
+	b := bus.New()
+	m := build(t, map[string]any{"tabs": []any{
+		map[string]any{"title": "DEV", "module": "term", "options": shell("cat")},
+	}}, module.Context{Wake: func() {}, Bus: b})
+
+	renamer := m.(interface {
+		Rename(int, string) bool
+		TitleAt(int) string
+		SessionAt(int) string
+		GivenNames() map[string]string
+	})
+	if !renamer.Rename(0, "facturation") {
+		t.Fatal("the tab refused a name")
+	}
+	if got := renamer.TitleAt(0); got != "facturation" {
+		t.Fatalf("the tab is called %q", got)
+	}
+
+	id := renamer.SessionAt(0)
+	if id == "" {
+		t.Fatal("no session behind the tab, so nothing to publish about")
+	}
+	b.PublishEvent(transcript.NameTopic, transcript.SessionName{
+		SessionID: id, Name: "Analyse Wayland",
+	})
+	waitFor(t, "the strip to settle", func() bool {
+		return strings.Contains(paint(t, m, 60, 8).row(0), "facturation")
+	})
+	if got := renamer.TitleAt(0); got != "facturation" {
+		t.Errorf("a published name took the tab over: %q", got)
+	}
+
+	// And it is reported against its conversation, which is what the
+	// application writes down.
+	if got := renamer.GivenNames()[id]; got != "facturation" {
+		t.Errorf("the name is remembered as %q against %q", got, id)
+	}
+}
+
+// An empty name hands the tab back. The automatic name applies again, which is
+// how you undo a name you no longer want without inventing one.
+func TestAnEmptyNameHandsTheTabBack(t *testing.T) {
+	b := bus.New()
+	m := build(t, map[string]any{"tabs": []any{
+		map[string]any{"title": "DEV", "module": "term", "options": shell("cat")},
+	}}, module.Context{Wake: func() {}, Bus: b})
+
+	renamer := m.(interface {
+		Rename(int, string) bool
+		TitleAt(int) string
+		SessionAt(int) string
+		GivenNames() map[string]string
+	})
+	renamer.Rename(0, "facturation")
+	renamer.Rename(0, "   ")
+
+	if len(renamer.GivenNames()) != 0 {
+		t.Errorf("a name given back is still remembered: %v", renamer.GivenNames())
+	}
+	id := renamer.SessionAt(0)
+	b.PublishEvent(transcript.NameTopic, transcript.SessionName{
+		SessionID: id, Name: "Analyse Wayland",
+	})
+	waitFor(t, "the published name", func() bool {
+		return renamer.TitleAt(0) == "Analyse Wayland"
+	})
+}
+
+// A renamed tab dragged into another pane keeps its name, and keeps it for
+// good: the flag saying the name is yours travels with the tab.
+func TestANameTravelsWithTheTab(t *testing.T) {
+	b := bus.New()
+	from := build(t, map[string]any{"tabs": []any{
+		map[string]any{"title": "DEV", "module": "term", "options": shell("cat")},
+	}}, module.Context{Wake: func() {}, Bus: b})
+	to := build(t, map[string]any{"tabs": []any{
+		map[string]any{"title": "other", "module": "term", "options": shell("cat")},
+	}}, module.Context{Wake: func() {}, Bus: b})
+
+	src := from.(interface {
+		Rename(int, string) bool
+		Detach(int) (module.Module, module.Held, bool)
+	})
+	src.Rename(0, "facturation")
+	mod, held, ok := src.Detach(0)
+	if !ok {
+		t.Fatal("the tab would not detach")
+	}
+	dst := to.(interface {
+		Adopt(module.Module, module.Held) error
+		TitleAt(int) string
+		SessionAt(int) string
+	})
+	if err := dst.Adopt(mod, held); err != nil {
+		t.Fatalf("Adopt: %v", err)
+	}
+	if got := dst.TitleAt(1); got != "facturation" {
+		t.Fatalf("the tab arrived as %q", got)
+	}
+
+	id := dst.SessionAt(1)
+	b.PublishEvent(transcript.NameTopic, transcript.SessionName{
+		SessionID: id, Name: "Analyse Wayland",
+	})
+	waitFor(t, "the strip to settle", func() bool {
+		return strings.Contains(paint(t, to, 60, 8).row(0), "facturation")
+	})
+	if got := dst.TitleAt(1); got != "facturation" {
+		t.Errorf("the move cost the tab its name: %q", got)
+	}
+}

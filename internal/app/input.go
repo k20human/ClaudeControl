@@ -68,6 +68,11 @@ var bindings = []binding{
 	// intact through a hosting emulator — the three tests every key here has
 	// to pass. i for the input a session is waiting for.
 	{[]string{"alt+i"}, "alt+i", "go to what is waiting on you", func(a *App) { a.focusWaiting() }},
+	// F2 renames wherever anything is named — a file manager, a spreadsheet,
+	// the tabs of an editor — and it is not a key Claude Code or a shell
+	// wants: no readline binding, and absent from the Claude Code binary,
+	// where alt+t, alt+e and alt+w all appear.
+	{[]string{"f2"}, "f2", "name this tab (double-click does too)", func(a *App) { a.beginRenameTab() }},
 	{[]string{"alt+g"}, "alt+g", "this panel", func(a *App) { a.overlay = overlayHelp }},
 	{[]string{"alt+q"}, "alt+q", "quit", func(a *App) { a.overlay = overlayQuit }},
 }
@@ -141,6 +146,9 @@ func (a *App) handleKey(e uv.KeyPressEvent) {
 		return
 	}
 	if a.openDirKey(e) {
+		return
+	}
+	if a.renameKey(e) {
 		return
 	}
 

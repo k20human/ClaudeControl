@@ -553,6 +553,26 @@ keeps running**, reachable from `alt+space`, while a shell ends.
 from another pane it takes two. A tab is named after what it holds, numbered
 when two would read alike.
 
+### Naming a tab
+
+A tab starts named after its directory — three sessions in one project all
+read `DEV` — and takes **the name Claude Code gives the conversation** as soon
+as there is one. That name comes from the transcript, and a conversation
+brought back from the last run is read at startup rather than when the next
+hook happens to fire: otherwise a restored tab wore its directory's name until
+you typed in it, with its real name sitting in a file the whole time.
+
+**`F2` names it yourself**, and so does a **double-click on the label**. The
+current name is on the line and the first thing you type replaces it, the way
+a rename box works anywhere else; `enter` with it untouched pins the name it
+already has. Clearing the line hands the tab back, and the automatic name
+applies again.
+
+A name you typed is yours: nothing published afterwards overwrites it, it
+travels with the tab if you drag it to another pane, and it is written down
+against the conversation — not against the tab's place in the strip — so it
+comes back tomorrow on whatever tab that conversation comes back in.
+
 ## `sessions`
 
 The session list, reached with `alt+space`. It takes no options and is not
@@ -653,6 +673,7 @@ actually working** — an idle window stays idle.
 | `alt+:` | search your Claude conversations |
 | `alt+c` | copy the selection |
 | `alt+i` | go to what is waiting on you |
+| `F2` | name the tab in front of you (double-click a label does too) |
 | `alt+space` / `alt+,` / `alt+/` | sessions, settings, command palette |
 | `alt+g` / `alt+q` | help, quit |
 
@@ -836,6 +857,12 @@ starts the next run unless `config.yaml` is newer than it, so adding a pane
 there is a pane you see rather than an edit that appears to do nothing. If a
 saved arrangement will not rebuild — a module that no longer exists, options
 that no longer parse — the configuration is used and the bar says why.
+
+The names you gave tabs are kept in the same file, against the conversations
+they name, and unlike the arrangement they are written the moment you give one
+— a name is worth keeping even when a window is closed the hard way. A name is
+dropped only when its conversation no longer has a transcript: that
+conversation is gone, and so is anything you called it.
 
 A pane is written down as what it was built from, updated by what it can say
 about itself. That distinction matters: a pane of tabs reports the tabs it

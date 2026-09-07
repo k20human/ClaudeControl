@@ -43,6 +43,10 @@ type App struct {
 	tailerMu sync.Mutex
 	tailers  map[string]*transcript.Tailer
 
+	// tailed is the file each tailer is following, so a path that changes can
+	// be noticed. Resuming a conversation moves it to a new file.
+	tailed map[string]string
+
 	// savedSessions is what the snapshot on disk holds, so it is rewritten
 	// only when the conversations actually change.
 	savedSessions []string
@@ -128,6 +132,13 @@ type App struct {
 
 	// openDir is the open panel choosing where a session starts.
 	openDir *openDirState
+
+	// rename is the open prompt naming a tab.
+	rename *renameState
+
+	// lastTabPress is the press a second one is compared against, to make a
+	// double-click out of two clicks.
+	lastTabPress tabPress
 
 	// conv is the open search across the conversations on disk.
 	conv *convSearch
@@ -263,6 +274,13 @@ func New(cfgPath string) (*App, error) {
 			a.nextPane = id
 		}
 	}
+	// The names you gave last time, back on the conversations that came back.
+	a.applyNames(resuming.Names)
+
+	// And what Claude Code already knows about them, read now rather than
+	// whenever the next hook happens to fire.
+	a.followHeldSessions()
+
 	if ids := layout.Leaves(root); len(ids) > 0 {
 		a.focus = ids[0]
 		a.prev = ids[0]
@@ -632,6 +650,7 @@ func (a *App) draw() {
 	a.drawFind(a.scr)
 	a.drawConvSearch(a.scr)
 	a.drawOpenDir(a.scr)
+	a.drawRename(a.scr)
 	a.drawMenu(a.scr)
 	a.drawPalette(a.scr)
 	a.drawOverlay(a.scr)
@@ -647,7 +666,7 @@ func (a *App) draw() {
 func (a *App) cursorTarget() (x, y int, visible bool) {
 	if a.overlay != overlayNone || a.sessionPanel != nil || a.settingsPanel != nil ||
 		a.palette != nil || a.menu != nil || a.find != nil || a.conv != nil ||
-		a.openDir != nil {
+		a.openDir != nil || a.rename != nil {
 		return 0, 0, false
 	}
 	m, ok := a.modules[a.focus]
