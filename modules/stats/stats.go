@@ -104,7 +104,7 @@ func (m *Module) Init(ctx module.Context) error {
 	m.pool = ctx.Pool
 
 	if ctx.Bus != nil {
-		ch := ctx.Bus.SubscribeState(transcript.SessionTopic)
+		ch, _ := ctx.Bus.SubscribeEvent(transcript.SessionTopic, transcript.SessionDepth)
 		go func() {
 			for v := range ch {
 				sm, ok := v.(transcript.SessionMetrics)

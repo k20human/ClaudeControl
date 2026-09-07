@@ -95,3 +95,16 @@ func (m *Module) PlusColumn() int {
 	defer m.mu.Unlock()
 	return m.plusX
 }
+
+// Titles is what each tab is called, in order. The strip shows only what fits
+// and shortens what it shows, so a test that wants the names has to ask for
+// them rather than read them off the row.
+func (m *Module) Titles() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]string, 0, len(m.tabs))
+	for _, t := range m.tabs {
+		out = append(out, t.title)
+	}
+	return out
+}

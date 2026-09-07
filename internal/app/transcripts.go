@@ -37,7 +37,7 @@ func (a *App) followTranscript(sessionID, path string) {
 				}
 				a.names[sessionID] = line.AITitle
 				a.usageMu.Unlock()
-				a.bus.PublishState(transcript.NameTopic, transcript.SessionName{
+				a.bus.PublishEvent(transcript.NameTopic, transcript.SessionName{
 					SessionID: sessionID, Name: line.AITitle,
 				})
 				a.Wake()
@@ -52,7 +52,7 @@ func (a *App) followTranscript(sessionID, path string) {
 			}
 			a.usage[sessionID] = m
 			a.usageMu.Unlock()
-			a.bus.PublishState(transcript.SessionTopic, transcript.SessionMetrics{
+			a.bus.PublishEvent(transcript.SessionTopic, transcript.SessionMetrics{
 				SessionID: sessionID,
 				Metrics:   m,
 			})

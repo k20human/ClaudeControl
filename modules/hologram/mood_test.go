@@ -135,7 +135,7 @@ func TestATurnFiresSparksAndSilenceFiresNone(t *testing.T) {
 		t.Fatalf("%d sparks in flight with nothing happening", got)
 	}
 
-	b.PublishState(transcript.SessionTopic, transcript.SessionMetrics{
+	b.PublishEvent(transcript.SessionTopic, transcript.SessionMetrics{
 		SessionID: "s",
 		Metrics:   transcript.Metrics{Model: "claude-opus-5", Context: 34_000, Thinking: 1_200},
 	})

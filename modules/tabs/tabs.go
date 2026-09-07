@@ -277,7 +277,7 @@ func (m *Module) Init(ctx module.Context) error {
 	// in one project reads "DEV", "DEV 2", "DEV 3" and says nothing about
 	// which is which. The pane title has followed the session's real name from
 	// the start; the strip that replaced the pane title has to as well.
-	names := ctx.Bus.SubscribeState(transcript.NameTopic)
+	names, _ := ctx.Bus.SubscribeEvent(transcript.NameTopic, transcript.NameDepth)
 	go func() {
 		for v := range names {
 			named, ok := v.(transcript.SessionName)

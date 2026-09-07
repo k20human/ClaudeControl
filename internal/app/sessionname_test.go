@@ -16,7 +16,7 @@ import (
 func TestTheNameInATranscriptReachesTheApplication(t *testing.T) {
 	a := newTestApp(t)
 	a.bus = testBus
-	names := a.bus.SubscribeState(transcript.NameTopic)
+	names, _ := a.bus.SubscribeEvent(transcript.NameTopic, transcript.NameDepth)
 
 	path := filepath.Join(t.TempDir(), "conversation.jsonl")
 	body := `{"type":"user","cwd":"/home/k20/DEV","message":{"content":"hello"}}` + "\n" +

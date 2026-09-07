@@ -116,3 +116,50 @@ func TestConcurrentUseIsSafe(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// A topic whose value is one fact about one thing cannot be a state topic.
+//
+// A state channel keeps only the latest value, which is right for a snapshot
+// of everything — the pool publishes its whole list, and an older list is
+// worth nothing. It is wrong for a fact about a single session: two sessions
+// naming themselves within a moment of each other, and the second replaced the
+// first before anybody read it. Nothing republishes a name, so the one that
+// was dropped never arrived at all, and its tab kept the name of its
+// directory for as long as the application ran.
+func TestEveryEventArrivesWhereAStateWouldBeReplaced(t *testing.T) {
+	b := bus.New()
+
+	states := b.SubscribeState("topic.state")
+	events, dropped := b.SubscribeEvent("topic.event", 8)
+
+	for _, v := range []string{"first", "second", "third"} {
+		b.PublishState("topic.state", v)
+		b.PublishEvent("topic.event", v)
+	}
+
+	// The state channel holds one: whichever came last.
+	var kept []string
+	for len(states) > 0 {
+		kept = append(kept, (<-states).(string))
+	}
+	if len(kept) != 1 || kept[0] != "third" {
+		t.Errorf("the state channel held %v, want only the last", kept)
+	}
+
+	// The event channel holds all three, in order.
+	var seen []string
+	for i := 0; i < 3; i++ {
+		select {
+		case v := <-events:
+			seen = append(seen, v.(string))
+		case <-time.After(time.Second):
+			t.Fatalf("only %v arrived", seen)
+		}
+	}
+	if len(seen) != 3 || seen[0] != "first" || seen[2] != "third" {
+		t.Errorf("the event channel held %v, want all three in order", seen)
+	}
+	if n := dropped(); n != 0 {
+		t.Errorf("%d dropped from a channel with room", n)
+	}
+}

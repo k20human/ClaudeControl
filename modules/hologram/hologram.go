@@ -165,7 +165,7 @@ func (m *Module) Init(ctx module.Context) error {
 
 	// Turns are what a spark marks. Nothing emits one on a timer, so the panel
 	// is quiet exactly when the sessions are.
-	turns := ctx.Bus.SubscribeState(transcript.SessionTopic)
+	turns, _ := ctx.Bus.SubscribeEvent(transcript.SessionTopic, transcript.SessionDepth)
 	go func() {
 		for v := range turns {
 			sm, ok := v.(transcript.SessionMetrics)

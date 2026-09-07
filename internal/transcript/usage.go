@@ -10,7 +10,15 @@ import (
 // The topic and its payload live here rather than beside the publisher: a
 // module that wants to display them cannot import the application, which
 // already imports modules.
+//
+// An event topic, not a state one. Each publication is one turn of one
+// session, and a state channel keeps only the latest value: on it a turn from
+// one session replaces an unread turn from another, and the figure the stats
+// pane then shows belongs to somebody else.
 const SessionTopic = "session.usage"
+
+// SessionDepth is how many turns may wait to be read.
+const SessionDepth = 64
 
 // SessionMetrics ties a turn's metrics to the session that produced them.
 type SessionMetrics struct {
@@ -19,7 +27,17 @@ type SessionMetrics struct {
 }
 
 // NameTopic is where the name Claude Code gave a session is published.
+//
+// An event topic for the same reason SessionTopic is, and here the cost of
+// getting it wrong was plain to see: two sessions naming themselves within a
+// moment of each other, the second replacing the first before anybody read it,
+// and nothing ever republishes a name — so the tab that lost the race wore the
+// name of its directory for as long as the application ran.
 const NameTopic = "session.name"
+
+// NameDepth is how many names may wait to be read. Enough for every pane of a
+// busy screen to be named in the same instant.
+const NameDepth = 32
 
 // SessionName ties that name to its session.
 type SessionName struct {

@@ -233,7 +233,7 @@ func TestASessionShowsItsLastTurn(t *testing.T) {
 		t.Fatalf("a session with no turn is not listed plainly:\n%s", out)
 	}
 
-	b.PublishState(transcript.SessionTopic, transcript.SessionMetrics{
+	b.PublishEvent(transcript.SessionTopic, transcript.SessionMetrics{
 		SessionID: "sess-1",
 		Metrics: transcript.Metrics{
 			Model: "claude-opus-5", Context: 34_000, CacheRate: 0.41, Thinking: 1_200,
