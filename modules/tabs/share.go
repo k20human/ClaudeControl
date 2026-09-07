@@ -20,10 +20,16 @@ const tabMin = 10
 // fitLocked is how many tabs the strip can hold at tabMin, and how many are
 // left over.
 func (m *Module) fitLocked(width int) (shown, hidden int) {
-	if width < tabMin || len(m.tabs) == 0 {
+	if len(m.tabs) == 0 || width <= 0 {
 		return 0, len(m.tabs)
 	}
 	shown = width / tabMin
+	// Always one, however narrow. A strip that hid its only tab left it
+	// invisible and unpressable — and a tab you cannot press is one you
+	// cannot move, close, or even choose.
+	if shown < 1 {
+		shown = 1
+	}
 	if shown > len(m.tabs) {
 		shown = len(m.tabs)
 	}

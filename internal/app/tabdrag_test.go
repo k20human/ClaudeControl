@@ -385,3 +385,47 @@ func TestClickingATabOfAnUnfocusedPaneSelectsIt(t *testing.T) {
 	click(t, s, x, y)
 	waitForAnywhere(t, snap, "GOER-HERE")
 }
+
+// A pane holding a single tab, which is the shape a pane ends up in as soon as
+// you have moved its others away — and the one a tab most needs to leave.
+func oneAndThree(t *testing.T) string {
+	t.Helper()
+	cfg := filepath.Join(t.TempDir(), "one.yaml")
+	body := `layout:
+  split: horizontal
+  ratios: [2, 1]
+  children:
+    - module: tabs
+      options:
+        tabs:
+          - { title: brain, module: term, options: { cmd: [sh, -c, "printf BRAIN-HERE; cat"] } }
+          - { title: services, module: term, options: { cmd: [sh, -c, "printf SERVICES-HERE; cat"] } }
+    - module: tabs
+      options:
+        tabs:
+          - { title: lonely, module: term, options: { cmd: [sh, -c, "printf LONELY-HERE; cat"] } }
+`
+	if err := os.WriteFile(cfg, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return cfg
+}
+
+// The only tab of a pane can be dragged out of it, which takes the pane with
+// it. A tab you cannot pick up is a tab you have to close and open again
+// somewhere else, and for a conversation that means losing it.
+func TestTheOnlyTabOfAPaneCanBeDragged(t *testing.T) {
+	const W, H = 120, 20
+	s, snap := run(t, oneAndThree(t), W, H)
+	waitForAnywhere(t, snap, "BRAIN-HERE")
+	waitForAnywhere(t, snap, "lonely")
+	waitForRow(t, snap, H-1, "2 panes")
+
+	// Straight at it, without focusing its pane first.
+	fromX, fromY := at(t, snap, "lonely")
+	dragTab(t, s, fromX, fromY, W/4, H/2)
+
+	waitForRow(t, snap, H-1, "1 pane")
+	waitForAnywhere(t, snap, "lonely")
+	waitForAnywhere(t, snap, "LONELY-HERE")
+}

@@ -53,6 +53,7 @@ func (m *Module) drawStrip(scr uv.Screen, area uv.Rectangle) {
 	shares := shareOut(limit-area.Min.X, shown)
 
 	x := area.Min.X
+	var seams []seam
 	for i, t := range m.tabs {
 		if i >= shown {
 			t.x, t.w, t.closeX = 0, 0, 0
@@ -98,6 +99,25 @@ func (m *Module) drawStrip(scr uv.Screen, area uv.Rectangle) {
 			t.closeX = x - area.Min.X + w - 1 - ansi.StringWidth(closeLabel)
 		}
 		x += w
+		if i+1 < shown {
+			seams = append(seams, seam{at: x, active: i+1 == m.active})
+		}
+	}
+
+	// A line between the tabs, so the eye finds their edges: tabs that fill
+	// the strip meet without one, and two titles running into each other read
+	// as a single long label.
+	//
+	// Painted after the tabs rather than as each one ends, because the tab
+	// that follows starts on that very column and would draw over it. It
+	// takes the following tab's background, so the seam belongs to a tab
+	// rather than sitting between two — and a click on it lands somewhere.
+	for _, s := range seams {
+		bg := color.Color(bgStrip)
+		if s.active {
+			bg = bgActive
+		}
+		render.Text(scr, s.at, area.Min.Y, tabSeam, fgSeam, bg)
 	}
 
 	if hidden > 0 {
@@ -126,6 +146,19 @@ func (m *Module) drawStrip(scr uv.Screen, area uv.Rectangle) {
 			render.Text(scr, at, area.Min.Y, mark, fgWaiting, bgStrip)
 		}
 	}
+}
+
+// tabSeam is the line between two tabs. Drawn dim enough to be a boundary
+// rather than a thing in its own right.
+const tabSeam = "│"
+
+var fgSeam = color.RGBA{R: 0x3d, G: 0x47, B: 0x58, A: 0xff}
+
+// seam is a boundary between two tabs: where it goes, and whether the tab it
+// belongs to is the one on screen.
+type seam struct {
+	at     int
+	active bool
 }
 
 func itoa(n int) string {

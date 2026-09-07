@@ -491,9 +491,12 @@ both. The same rule opens a new pane with `alt+n`.
 
 The tabs **fill the strip**, the way a terminal's do, sharing it evenly: a row
 of small buttons does not read as tabs, and a tab should be as wide a target as
-it looks. A title too long for its share is shortened; a tab too many for the
-strip to divide is dropped and counted, so the strip never lies about how many
-there are.
+it looks. A line marks each boundary, since tabs that meet without a seam read
+as one long label. A title too long for its share is shortened; a tab too many
+for the strip to divide is dropped and counted, so the strip never lies about
+how many there are — and the tab in front of you is always shown, however
+narrow the pane, because a tab you cannot press is one you cannot move, close
+or even choose.
 
 For a window that is not wide enough to split again. Splitting is better when
 there is room — you see two things at once — so this is what you reach for when
