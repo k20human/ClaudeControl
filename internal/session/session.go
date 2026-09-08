@@ -68,6 +68,9 @@ type Session struct {
 
 	onUpdate func()
 
+	// titles removes the window title a guest sets, across reads.
+	titles titles
+
 	ptmx *os.File
 	cmd  *exec.Cmd
 
@@ -158,13 +161,23 @@ func (s *Session) pumpOutput() {
 	for {
 		n, err := s.ptmx.Read(buf)
 		if n > 0 {
+			// The window title a guest sets is taken out here, before the
+			// emulator can misparse it and print it into the pane. Under the
+			// same lock as the write, because a feed removes titles from the
+			// same state.
 			s.termMu.Lock()
-			_, _ = s.Term.Write(buf[:n])
+			show := s.titles.keep(buf[:n])
+			if len(show) > 0 {
+				_, _ = s.Term.Write(show)
+			}
 			s.termMu.Unlock()
-			// onUpdate is called outside the lock: it wakes the UI, and the
-			// UI resizes sessions.
-			if s.onUpdate != nil {
-				s.onUpdate()
+			if len(show) > 0 {
+				// onUpdate is called outside the lock: it wakes the UI, and
+				// the UI resizes sessions. A read that was nothing but a
+				// title changed no cell and wakes nobody.
+				if s.onUpdate != nil {
+					s.onUpdate()
+				}
 			}
 		}
 		if err != nil {
@@ -472,13 +485,23 @@ func Attach(id ID, w, h int, onUpdate func()) (*Session, error) {
 // where the process's own output would have gone, and the process never sees
 // it. Everything else that reaches the emulator arrives from the pump under
 // the same lock, so a feed cannot land in the middle of a sequence.
+//
+// Window titles are taken out here too. What is replayed is the log of a
+// service that owned a terminal somewhere else, and a service names its
+// window as readily as anything else does.
 func (s *Session) Feed(b []byte) {
 	if len(b) == 0 {
 		return
 	}
 	s.termMu.Lock()
-	_, _ = s.Term.Write(b)
+	show := s.titles.keep(b)
+	if len(show) > 0 {
+		_, _ = s.Term.Write(show)
+	}
 	s.termMu.Unlock()
+	if len(show) == 0 {
+		return
+	}
 	if s.onUpdate != nil {
 		s.onUpdate()
 	}
