@@ -573,6 +573,14 @@ travels with the tab if you drag it to another pane, and it is written down
 against the conversation — not against the tab's place in the strip — so it
 comes back tomorrow on whatever tab that conversation comes back in.
 
+A tab also carries what the pane title carries for a pane holding one
+conversation: **the model that answered and what the turn carried**, after the
+name and separated from it by a dot — `Reemo-227 clipboard limit · opus-5 ·
+454k ctx`. Only where both fit whole: a clipped figure is a figure you cannot
+trust, so a narrow pane, or a strip divided between several tabs, shows the
+name alone. The rule is the room rather than the count, so two tabs in a wide
+pane keep their figures.
+
 ## `sessions`
 
 The session list, reached with `alt+space`. It takes no options and is not

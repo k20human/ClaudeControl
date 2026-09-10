@@ -84,6 +84,10 @@ type Module struct {
 	tabs   []*tab
 	active int
 
+	// usage is the last turn reported for each session, which is what a tab
+	// says beyond its name.
+	usage map[string]transcript.Metrics
+
 	cols, rows int
 	// plusX is where the + was last drawn, pane-local.
 	plusX int
@@ -290,6 +294,22 @@ func (m *Module) Init(ctx module.Context) error {
 				continue
 			}
 			if m.rename(named.SessionID, named.Name) && ctx.Wake != nil {
+				ctx.Wake()
+			}
+		}
+	}()
+
+	// What the pane title carries for a pane holding one conversation: the
+	// model that answered and what the turn carried. The strip took that row,
+	// so it has to carry the reading too.
+	turns, _ := ctx.Bus.SubscribeEvent(transcript.SessionTopic, transcript.SessionDepth)
+	go func() {
+		for v := range turns {
+			turn, ok := v.(transcript.SessionMetrics)
+			if !ok {
+				continue
+			}
+			if m.noteUsage(turn) && ctx.Wake != nil {
 				ctx.Wake()
 			}
 		}

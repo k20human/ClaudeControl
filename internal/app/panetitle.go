@@ -21,6 +21,10 @@ import (
 // titleH is the row every pane gives up to its title.
 const titleH = 1
 
+// detailSep separates a name from what is said about it, and those things from
+// each other.
+const detailSep = " · "
+
 var (
 	titleBg       = color.RGBA{R: 0x1b, G: 0x21, B: 0x2b, A: 0xff}
 	titleFg       = color.RGBA{R: 0x5d, G: 0x69, B: 0x7c, A: 0xff}
@@ -127,10 +131,13 @@ func (a *App) drawPaneTitles(scr uv.Screen) {
 
 		name := a.paneName(id)
 		render.Text(scr, x, r.Y, truncate(name, r.X+r.W-1-x), fg, bg)
-		used := x - r.X + ansi.StringWidth(name) + 1
+		used := x - r.X + ansi.StringWidth(name)
 
-		if rest := a.paneDetail(id); rest != "" && r.W-used > 3 {
-			render.Text(scr, r.X+used, r.Y, truncate(" "+rest, r.W-used-1), detail, bg)
+		// A separator rather than a gap: two spaces between a name and a
+		// model read as two columns of a table, and the eye looks for the
+		// column that is not there.
+		if rest := a.paneDetail(id); rest != "" && r.W-used > 5 {
+			render.Text(scr, r.X+used, r.Y, truncate(detailSep+rest, r.W-used-1), detail, bg)
 		}
 	}
 }
@@ -150,11 +157,11 @@ func (a *App) paneDetail(id layout.PaneID) string {
 
 	sm, ok := a.modules[id].(interface{ SessionID() string })
 	if !ok {
-		return strings.Join(parts, " · ")
+		return strings.Join(parts, detailSep)
 	}
 	m, ok := a.sessionUsage(sm.SessionID())
 	if !ok {
-		return strings.Join(parts, " · ")
+		return strings.Join(parts, detailSep)
 	}
 	if m.Model != "" {
 		parts = append(parts, transcript.ShortModel(m.Model))
@@ -165,7 +172,7 @@ func (a *App) paneDetail(id layout.PaneID) string {
 		// worse than none.
 		parts = append(parts, transcript.HumanTokens(m.Context)+" ctx")
 	}
-	return strings.Join(parts, " · ")
+	return strings.Join(parts, detailSep)
 }
 
 // sessionUsage is the last turn reported for a session.

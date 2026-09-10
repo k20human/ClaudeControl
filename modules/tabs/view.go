@@ -60,22 +60,38 @@ func (m *Module) drawStrip(scr uv.Screen, area uv.Rectangle) {
 			continue
 		}
 		w := shares[i]
-		label := " " + t.title + " "
+		body := t.title
 		if t.known {
 			// The same mark as everywhere else: one meaning per shape.
-			label = " " + indicator.Glyph(t.state, now) + " " + t.title + " "
+			body = indicator.Glyph(t.state, now) + " " + t.title
 		}
 		// The cross is on the tab you are looking at and no other. It saves
 		// the width of one on every tab, and it means a stray click cannot
 		// close something you were not even reading.
 		closing := i == m.active && len(m.tabs) > 1
+
+		// The reading goes in only where the name and the figures both fit
+		// whole. Several tabs share the strip and none of them has the room,
+		// which is the answer there: the name.
+		room := w
+		if closing {
+			room -= ansi.StringWidth(closeLabel) + 1
+		}
+		detail, detailAt := m.detailLocked(t), -1
+		if detail != "" {
+			if whole := body + detailSep + detail; ansi.StringWidth(whole)+2 <= room {
+				detailAt = 1 + ansi.StringWidth(body+detailSep)
+				body = whole
+			}
+		}
+		label := " " + body + " "
+
 		if closing {
 			// The title is padded out first so the cross lands at the right
 			// edge of the tab, which is where its clickable region is
 			// recorded. Drawn anywhere else, the cross you can see and the
 			// cross you can press are two different things.
-			cw := ansi.StringWidth(closeLabel)
-			head := padTab(clipTab(label, w-cw-1), w-cw-1)
+			head := padTab(clipTab(label, room), room)
 			label = head + closeLabel + " "
 		} else {
 			label = padTab(clipTab(label, w), w)
@@ -91,6 +107,17 @@ func (m *Module) drawStrip(scr uv.Screen, area uv.Rectangle) {
 		}
 		render.Fill(scr, uv.Rect(x, area.Min.Y, w, 1), bg)
 		render.Text(scr, x, area.Min.Y, padTab(label, w), fg, bg)
+		if detailAt >= 0 {
+			// Dimmer than the name on a tab you are not looking at. On the
+			// one you are, the fill is the accent colour and a dim grey on it
+			// would be unreadable, so the reading keeps the label's own
+			// foreground.
+			detailFg := color.Color(tabDetailFg)
+			if i == m.active {
+				detailFg = fg
+			}
+			render.Text(scr, x+detailAt, area.Min.Y, detail, detailFg, bg)
+		}
 		// Recorded pane-local, because that is how the pointer arrives: the
 		// application translates a click into the pane's own coordinates
 		// before the module ever sees it.
