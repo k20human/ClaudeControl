@@ -682,6 +682,7 @@ actually working** — an idle window stays idle.
 | `alt+c` | copy the selection |
 | `alt+i` | go to what is waiting on you |
 | `F2` | name the tab in front of you (double-click a label does too) |
+| middle click | paste the primary selection — what selecting with the mouse filled |
 | `alt+space` / `alt+,` / `alt+/` | sessions, settings, command palette |
 | `alt+g` / `alt+q` | help, quit |
 
@@ -798,6 +799,18 @@ Drag across a pane to select, then `alt+c` — or right-click and choose
 asked only for button events — Claude Code does — cannot see a drag at all: it
 arrives as a press and a release with nothing in between. The gesture is
 therefore free, and it is the one people expect to select text with.
+
+**The selection also goes where Linux keeps it.** Selecting fills the primary
+selection, and a **middle click pastes it** — no key in between, the way it
+works in every other window on the desktop. A terminal does this for you until
+an application turns mouse reporting on, which takes the buttons from it; this
+one takes the buttons, so it owes the behaviour back.
+
+The two clipboards stay two: `alt+c` fills the one `ctrl+v` empties, and
+dragging across a line never costs you what you copied. A middle click asks the
+desktop first — text selected in a browser pastes here — and falls back to what
+this window last selected, which is the whole answer on a machine with no
+`wl-clipboard` installed.
 
 The press is still forwarded, so a click reaches the guest as a click; only
 once the pointer moves does the drag become a selection, and the guest is sent

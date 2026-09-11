@@ -100,6 +100,17 @@ func (a *App) handleMouse(ev uv.MouseEvent, m uv.Mouse) {
 		return
 	}
 
+	// The middle button pastes the selection, the way it does everywhere else
+	// on this desktop. The terminal would have done it here, before mouse
+	// reporting took the button from it.
+	if click, isClick := ev.(uv.MouseClickEvent); isClick && uv.Mouse(click).Button == uv.MouseMiddle {
+		if id := paneAt(a.rects, m.X, m.Y); id != 0 {
+			a.setFocus(id)
+			a.pasteSelection()
+			return
+		}
+	}
+
 	// Right-click opens one over a pane. The terminal would have shown its own
 	// here, before mouse reporting took the button from it.
 	if click, isClick := ev.(uv.MouseClickEvent); isClick && uv.Mouse(click).Button == uv.MouseRight {
@@ -298,6 +309,12 @@ func (a *App) handleMouse(ev uv.MouseEvent, m uv.Mouse) {
 	}
 	if mod, ok := a.modules[id].(module.Inputter); ok {
 		mod.Mouse(translate(ev, r.X, r.Y))
+	}
+	// After the pane has had the release, because until it has there is no
+	// selection to take.
+	if rel, released := ev.(uv.MouseReleaseEvent); released &&
+		uv.Mouse(rel).Button == uv.MouseLeft {
+		a.takeSelection(id)
 	}
 }
 

@@ -140,6 +140,10 @@ type App struct {
 	// double-click out of two clicks.
 	lastTabPress tabPress
 
+	// primary is what was last selected here, which is what the middle button
+	// pastes when no helper program answers for the desktop.
+	primary string
+
 	// conv is the open search across the conversations on disk.
 	conv *convSearch
 
