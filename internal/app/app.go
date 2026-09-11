@@ -218,6 +218,10 @@ func New(cfgPath string) (*App, error) {
 		note = why
 	}
 
+	// Settled before any session exists, because a session takes it when it
+	// starts and never asks again.
+	session.SetDefaultScrollback(cfg.ScrollbackOrDefault())
+
 	b := bus.New()
 	a := &App{
 		root:        root,

@@ -12,6 +12,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"claudecontrol/internal/layout"
+	"claudecontrol/internal/session"
 )
 
 // NodeSpec is one node of the configured layout.
@@ -28,6 +29,27 @@ type NodeSpec struct {
 type Config struct {
 	Layout *NodeSpec  `yaml:"layout"`
 	Alerts *AlertSpec `yaml:"alerts,omitempty"`
+
+	// Scrollback is how many lines each pane keeps once they have scrolled
+	// off the top. A pointer for the same reason the alerts are: not written
+	// and written zero are different answers, and zero — keep next to
+	// nothing — is a choice somebody who never scrolls back is entitled to
+	// make.
+	Scrollback *int `yaml:"scrollback,omitempty"`
+}
+
+// ScrollbackOrDefault is how many lines a pane keeps, with the default filled
+// in.
+//
+// It is the largest thing this application holds: a cell is 112 bytes, so a
+// line of eighty columns costs about ten kilobytes once it is kept, and a
+// session with the emulator's own default of ten thousand lines reaches 94
+// MiB on its own.
+func (c *Config) ScrollbackOrDefault() int {
+	if c == nil || c.Scrollback == nil {
+		return session.DefaultScrollback
+	}
+	return *c.Scrollback
 }
 
 // AlertSpec says how you are told that a conversation is waiting on you when

@@ -832,6 +832,28 @@ Without one, the `copy` and `paste` entries in the menu say `no clipboard
 tool` **before** you press them — finding out afterwards, from a message about
 a copy that did not happen, is finding out too late.
 
+## What a pane remembers
+
+Every pane keeps the lines that have scrolled off the top, so the wheel can go
+back to them. That memory is the largest thing this application holds, and it
+is not close: a cell is 112 bytes — a character, a style, a hyperlink — so a
+line of eighty columns costs about **ten kilobytes** once it is kept. Measured
+at 9.9 KB a line.
+
+The emulator's own default is ten thousand lines, which is **94 MiB for one
+pane** with its history full. A window holding three conversations and six
+services therefore reaches a gigabyte and stays there. So the default here is
+**2000 lines** — forty screens of scrolling, about 19 MiB a pane — and it is a
+setting:
+
+```yaml
+scrollback: 2000   # lines kept per pane, ~10 KB each
+```
+
+Zero asks for nothing kept, and gets one line: zero is the one number the
+emulator underneath reads as "use my default", and its default is the ten
+thousand this exists to avoid.
+
 ## Scrolling
 
 The wheel reaches a pane's history, three lines a notch. A guest on the normal

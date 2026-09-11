@@ -56,6 +56,10 @@ type Spec struct {
 	// session's — and because it is promoted from the unguarded type, so it
 	// can only be called before the pump starts.
 	Callbacks vt.Callbacks
+
+	// Scrollback is how many lines this session keeps once they have scrolled
+	// off. Zero takes the configured default, which is what everything does.
+	Scrollback int
 }
 
 // Session is a hosted process plus the emulator that interprets its output.
@@ -125,6 +129,7 @@ func Start(sp Spec) (*Session, error) {
 		cmd:       cmd,
 		drainDone: make(chan struct{}),
 	}
+	s.Term.SetScrollbackSize(scrollbackFor(sp.Scrollback))
 
 	// Installed before the pump starts, which is the only safe moment.
 	cb := sp.Callbacks
@@ -472,6 +477,7 @@ func Attach(id ID, w, h int, onUpdate func()) (*Session, error) {
 		onUpdate:  onUpdate,
 		drainDone: make(chan struct{}),
 	}
+	s.Term.SetScrollbackSize(scrollbackFor(0))
 	close(s.drainDone)
 	s.mu.Lock()
 	s.status = Running
