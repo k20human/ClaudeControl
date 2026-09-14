@@ -62,6 +62,45 @@ func TestASignalExitIsNamedRatherThanNumbered(t *testing.T) {
 	}
 }
 
+// A command that could not be run at all says so.
+//
+// 127 is what a shell reports for a command it could not find, and npm passes
+// it through: `npm run dev` on a project whose vite is not installed ends
+// exactly this way. The line explaining it scrolls out of the log; the number
+// stays in the row, and a number is not an explanation.
+func TestACommandThatCouldNotRunSaysSo(t *testing.T) {
+	m := build(t, map[string]any{"services": []any{
+		map[string]any{"name": "missing", "cmd": []any{"sh", "-c", "exit 127"}},
+		map[string]any{"name": "unreadable", "cmd": []any{"sh", "-c", "exit 126"}},
+		map[string]any{"name": "failed", "cmd": []any{"sh", "-c", "exit 2"}},
+	}})
+	m.StartPicked()
+	waitFor(t, "all three to end", func() bool {
+		for _, name := range []string{"missing", "unreadable", "failed"} {
+			if stateOf(m, name).State != supervisor.Exited {
+				return false
+			}
+		}
+		return true
+	})
+
+	out := paint(t, m, 90, 10).text()
+	if !strings.Contains(out, "no such command") {
+		t.Errorf("127 is not named:\n%s", out)
+	}
+	if !strings.Contains(out, "not executable") {
+		t.Errorf("126 is not named:\n%s", out)
+	}
+	// And an ordinary failure keeps its number: naming one this application
+	// cannot explain would be inventing a reason.
+	if !strings.Contains(out, "code 2") {
+		t.Errorf("an ordinary failure lost its code:\n%s", out)
+	}
+	if strings.Contains(out, "code 127") || strings.Contains(out, "code 126") {
+		t.Errorf("a code that has a name is still shown as a number:\n%s", out)
+	}
+}
+
 // `npm run dev` is a launcher. Kill it and the server it started can keep its
 // port, which is the state that makes a row reading "exited" so misleading:
 // true of the process, false of the service.

@@ -214,6 +214,10 @@ the other says leave it out.
 hide the failure behind a row reading `running` while nothing works. A death by
 signal is named — `SIGTERM` rather than `code 143` — because a number in that
 range reads like a failure when it means that something stopped the service.
+A command that could not be run at all is named too: `no such command` for 127
+and `not executable` for 126, since a service whose program is missing never
+started, which is a different problem from one that started and failed. The
+line saying which scrolls out of the log; the row keeps the reason.
 
 **And it says what the service left behind.** `npm run dev` is a launcher, not
 the server; kill the launcher and the server can keep its port. The scan

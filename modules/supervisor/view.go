@@ -249,12 +249,30 @@ func (m *Module) drawRowControls(scr uv.Screen, area uv.Rectangle, x, y, idx int
 // A shell, and npm with it, reports a process ended by a signal as 128 plus
 // the signal number. Printed as a number it reads like a failure; named, it
 // says that something stopped the service rather than that the service broke.
-// Outside that range the number is the program's own and is left alone.
+// Outside those ranges the number is the program's own and is left alone.
 func endedAs(code int) string {
 	if name, ok := signalNames[code-128]; ok {
 		return name
 	}
+	if name, ok := exitNames[code]; ok {
+		return name
+	}
 	return fmt.Sprintf("code %d", code)
+}
+
+// exitNames are the two codes a shell gives a command it could not run at all,
+// and npm passes them through. They say the service never started, which is a
+// different problem from one that started and failed — and the number alone
+// sent somebody to the logs to find out which. `vite: not found` scrolls away;
+// 127 is all that is left of it an hour later.
+//
+// A program is free to exit 127 for reasons of its own, and one that does is
+// described wrongly here. That is the same trade the signal range makes, for
+// the same reason: the reading is right nearly always, and the log is there
+// for the times it is not.
+var exitNames = map[int]string{
+	126: "not executable",
+	127: "no such command",
 }
 
 // signalNames covers the signals a supervised process actually meets: the ones
