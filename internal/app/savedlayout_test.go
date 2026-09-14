@@ -21,7 +21,7 @@ func TestASavedLayoutIsUsedWhenItIsNewerThanTheConfiguration(t *testing.T) {
 		LayoutAt: time.Now().Add(time.Hour),
 	}
 
-	got, why := chooseLayout(saved, cfg)
+	got, why := chooseLayout(saved, cfg, "")
 	if got == nil {
 		t.Fatalf("the saved layout was not used: %s", why)
 	}
@@ -43,7 +43,7 @@ func TestTheConfigurationWinsWhenItHasBeenEditedSince(t *testing.T) {
 		LayoutAt: time.Now().Add(-time.Hour),
 	}
 
-	got, why := chooseLayout(saved, cfg)
+	got, why := chooseLayout(saved, cfg, "")
 	if got != nil {
 		t.Errorf("the saved layout won over a configuration edited since: %v", got)
 	}
@@ -59,7 +59,7 @@ func TestWithNothingSavedTheConfigurationIsUsed(t *testing.T) {
 	if err := os.WriteFile(cfg, []byte("layout:\n  module: term\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := chooseLayout(Snapshot{}, cfg); got != nil {
+	if got, _ := chooseLayout(Snapshot{}, cfg, ""); got != nil {
 		t.Errorf("something was used with nothing saved: %v", got)
 	}
 }
@@ -70,7 +70,7 @@ func TestAMissingConfigurationDoesNotBeatASavedLayout(t *testing.T) {
 		Layout:   map[string]any{"module": "hologram"},
 		LayoutAt: time.Now(),
 	}
-	got, _ := chooseLayout(saved, filepath.Join(t.TempDir(), "nothing.yaml"))
+	got, _ := chooseLayout(saved, filepath.Join(t.TempDir(), "nothing.yaml"), "")
 	if got == nil {
 		t.Error("the saved layout was dropped because no configuration exists")
 	}

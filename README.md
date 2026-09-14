@@ -920,11 +920,20 @@ in the same shape the configuration file uses, and it holds the ratios as well
 as the structure: a divider dragged where you wanted it is part of the
 arrangement.
 
-**Your configuration wins if you have edited it since.** The saved arrangement
-starts the next run unless `config.yaml` is newer than it, so adding a pane
-there is a pane you see rather than an edit that appears to do nothing. If a
-saved arrangement will not rebuild — a module that no longer exists, options
-that no longer parse — the configuration is used and the bar says why.
+**Your configuration wins if you have edited the layout.** The saved
+arrangement starts the next run unless the `layout:` section of `config.yaml`
+has changed since it was saved, so adding a pane there is a pane you see rather
+than an edit that appears to do nothing.
+
+The layout section, not the file. What is compared is a fingerprint of the
+arrangement the file asks for, recorded beside the one you left — so adding a
+service, or the key that says what every session is started with, costs you
+nothing. Comparing the file's date, as this did, answered a question about the
+file where a question about the panes was meant, and an afternoon of dragging
+things about was thrown away by an edit that moved none of them.
+
+If a saved arrangement will not rebuild — a module that no longer exists,
+options that no longer parse — the configuration is used and the bar says why.
 
 The names you gave tabs are kept in the same file, against the conversations
 they name, and unlike the arrangement they are written the moment you give one

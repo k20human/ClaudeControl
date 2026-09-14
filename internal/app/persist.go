@@ -34,9 +34,17 @@ type Snapshot struct {
 	// the arrangement you get tomorrow.
 	Layout map[string]any `json:"layout,omitempty"`
 
-	// LayoutAt is when that arrangement was saved, which is what decides
-	// whether it or the configuration file starts the next run.
+	// LayoutAt is when that arrangement was saved. It decides whether the
+	// arrangement or the configuration file starts the next run, for a
+	// snapshot written before LayoutFrom existed.
 	LayoutAt time.Time `json:"layout_at,omitempty"`
+
+	// LayoutFrom identifies the configured layout this arrangement was saved
+	// against. What replaced a comparison of dates: editing the file to add a
+	// service, or a key about sessions, used to throw the arrangement away
+	// because the file was newer — a question about the file answered in
+	// place of a question about the panes.
+	LayoutFrom string `json:"layout_from,omitempty"`
 
 	// Names are the names you gave tabs by hand, by conversation.
 	//
@@ -52,14 +60,28 @@ type Snapshot struct {
 // chooseLayout picks the arrangement a run starts from, and says why when it
 // is not the saved one.
 //
-// The saved arrangement wins, unless the configuration file has been edited
-// since it was saved. In one sentence: your configuration wins if you have
-// edited it since. Without that rule, adding a pane to the configuration would
+// The saved arrangement wins, unless the configured layout has changed since
+// it was saved. Without that rule, adding a pane to the configuration would
 // appear to do nothing, and a setting that seems not to work is worse than one
 // that does not exist.
-func chooseLayout(s Snapshot, cfgPath string) (map[string]any, string) {
+//
+// The configured layout, not the file: `claude:`, `scrollback:`, a service
+// added to a supervisor — none of them says anything about how the panes are
+// arranged, and all of them used to cost you the arrangement you left, because
+// what was compared was the file's date.
+//
+// A snapshot written before that distinction existed has no fingerprint to
+// compare, and falls back to the date. One run of the old rule, and then never
+// again.
+func chooseLayout(s Snapshot, cfgPath, want string) (map[string]any, string) {
 	if len(s.Layout) == 0 {
 		return nil, ""
+	}
+	if s.LayoutFrom != "" {
+		if s.LayoutFrom == want {
+			return s.Layout, ""
+		}
+		return nil, "the layout in config.yaml has changed, so it wins"
 	}
 	st, err := os.Stat(cfgPath)
 	if err != nil {
@@ -107,6 +129,7 @@ func (a *App) saveLayout() {
 	} else {
 		snap.Layout = a.layoutSpec()
 		snap.LayoutAt = time.Now()
+		snap.LayoutFrom = a.layoutFrom
 	}
 	if len(a.savedSessions) > 0 {
 		snap.Sessions = a.savedSessions

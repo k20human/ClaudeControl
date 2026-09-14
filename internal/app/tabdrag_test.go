@@ -289,9 +289,9 @@ func TestTheArrangementSurvivesQuitting(t *testing.T) {
 	}, "the moved tab to come back on the right")
 }
 
-// And editing the configuration puts it back in charge, so a pane added there
-// is a pane you see.
-func TestEditingTheConfigurationBeatsTheSavedArrangement(t *testing.T) {
+// And editing the layout puts the configuration back in charge, so a pane
+// added there is a pane you see.
+func TestEditingTheLayoutBeatsTheSavedArrangement(t *testing.T) {
 	const W, H = 120, 20
 	cfg := twoTabbedPanes(t)
 	state := t.TempDir()
@@ -309,7 +309,66 @@ func TestEditingTheConfigurationBeatsTheSavedArrangement(t *testing.T) {
 	first.SendText("\r")
 	time.Sleep(700 * time.Millisecond)
 
-	// Touched since.
+	// The layout in the file is edited: a third pane, which the saved
+	// arrangement knows nothing about.
+	body := `layout:
+  split: horizontal
+  ratios: [1, 1, 1]
+  children:
+    - module: tabs
+      options:
+        tabs:
+          - { title: leftish, module: term, options: { cmd: [sh, -c, "printf LEFT-HERE; cat"] } }
+          - { title: goer, module: term, options: { cmd: [sh, -c, "printf GOER-HERE; cat"] } }
+    - module: tabs
+      options:
+        tabs:
+          - { title: righty, module: term, options: { cmd: [sh, -c, "printf RIGHT-HERE; cat"] } }
+    - module: term
+      options: { cmd: [sh, -c, "printf THIRD-HERE; cat"] }
+`
+	if err := os.WriteFile(cfg, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	second, snap2 := runWithEnv(t, cfg, W, H, vt.Callbacks{}, []string{"XDG_STATE_HOME=" + state})
+	_ = second
+	waitForAnywhere(t, snap2, "THIRD-HERE")
+	waitForAnywhere(t, snap2, "layout in config.yaml has changed")
+}
+
+// Editing anything else does not. A key that says what every session starts
+// with, or a service added to a supervisor, moves no pane — and used to cost
+// an afternoon of arranging them, because what was compared was the file's
+// date rather than the arrangement it asks for.
+func TestTouchingTheConfigurationKeepsTheSavedArrangement(t *testing.T) {
+	const W, H = 120, 20
+	cfg := twoTabbedPanes(t)
+	state := t.TempDir()
+
+	first, snap := runWithEnv(t, cfg, W, H, vt.Callbacks{}, []string{"XDG_STATE_HOME=" + state})
+	waitForAnywhere(t, snap, "LEFT-HERE")
+	click(t, first, 10, 5)
+	fromX, fromY := at(t, snap, "goer")
+	dragTab(t, first, fromX, fromY, 3*W/4, H/2)
+	waitFor(t, snap, func(g *screen) bool {
+		return strings.Contains(stripHalf(g, true), "goer")
+	}, "the tab to move")
+	first.SendText("\x1bq")
+	waitForAnywhere(t, snap, "save this layout")
+	first.SendText("\r")
+	time.Sleep(700 * time.Millisecond)
+
+	// The file is edited — a line about sessions, appended — and every pane
+	// stays where it was put.
+	body, err := os.ReadFile(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edited := "claude:\n  args: [\"--effort\", \"max\"]\n" + string(body)
+	if err := os.WriteFile(cfg, []byte(edited), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	later := time.Now().Add(2 * time.Second)
 	if err := os.Chtimes(cfg, later, later); err != nil {
 		t.Fatal(err)
@@ -318,9 +377,8 @@ func TestEditingTheConfigurationBeatsTheSavedArrangement(t *testing.T) {
 	second, snap2 := runWithEnv(t, cfg, W, H, vt.Callbacks{}, []string{"XDG_STATE_HOME=" + state})
 	_ = second
 	waitFor(t, snap2, func(g *screen) bool {
-		return strings.Contains(stripHalf(g, false), "goer")
-	}, "the configuration's arrangement")
-	waitForAnywhere(t, snap2, "config.yaml is newer")
+		return strings.Contains(stripHalf(g, true), "goer")
+	}, "the arrangement to survive an edit that moved no pane")
 }
 
 // A tab is chrome, not guest content. The first click on an unfocused pane is

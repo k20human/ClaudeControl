@@ -145,6 +145,10 @@ type App struct {
 	// pastes when no helper program answers for the desktop.
 	primary string
 
+	// layoutFrom identifies the configured layout this run started from, so a
+	// saved arrangement can say which one it belongs to.
+	layoutFrom string
+
 	// conv is the open search across the conversations on disk.
 	conv *convSearch
 
@@ -202,7 +206,8 @@ func New(cfgPath string) (*App, error) {
 	// to start over — the configuration is used and the bar says why.
 	resuming, _ := LoadSnapshot(SnapshotPath())
 	note := ""
-	if saved, why := chooseLayout(resuming, cfgPath); saved != nil {
+	configured := config.LayoutFingerprint(cfg.Layout)
+	if saved, why := chooseLayout(resuming, cfgPath, configured); saved != nil {
 		spec, cerr := config.NodeFrom(saved)
 		if cerr == nil {
 			var sroot *layout.Node
@@ -241,6 +246,7 @@ func New(cfgPath string) (*App, error) {
 		wake:        make(chan struct{}, 1),
 		waitingMark: make(map[string]bool),
 		keepLayout:  true,
+		layoutFrom:  configured,
 	}
 
 	// Built before the hook pump starts, because a hook can arrive before the

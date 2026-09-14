@@ -4,6 +4,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
+
+	"claudecontrol/internal/config"
 )
 
 func TestSnapshotRoundTrips(t *testing.T) {
@@ -66,5 +69,80 @@ func TestSaveSnapshotLeavesNoTemporaryFileBehind(t *testing.T) {
 			names[i] = e.Name()
 		}
 		t.Fatalf("directory holds %v, want only state.json", names)
+	}
+}
+
+// Editing the configuration must not cost you the arrangement you left, unless
+// what you edited was the arrangement.
+//
+// The rule compared the file's date, so adding a service — or the key that
+// says what every session is started with — threw away an afternoon of
+// dragging panes about. The question is about the panes, so that is what is
+// asked.
+func TestOnlyALayoutEditOverridesTheSavedArrangement(t *testing.T) {
+	saved := map[string]any{"module": "term"}
+	before := config.LayoutFingerprint(&config.NodeSpec{
+		Split:  "horizontal",
+		Ratios: []int{1, 1},
+		Children: []*config.NodeSpec{
+			{Module: "claude", Options: map[string]any{"dir": "/home/k20/DEV"}},
+			{Module: "hologram"},
+		},
+	})
+	snap := Snapshot{Layout: saved, LayoutFrom: before, LayoutAt: time.Now().Add(-time.Hour)}
+
+	// The file has been edited — a key about sessions, nothing about panes —
+	// and the layout it asks for is word for word the one it asked for before.
+	same := config.LayoutFingerprint(&config.NodeSpec{
+		Split:  "horizontal",
+		Ratios: []int{1, 1},
+		Children: []*config.NodeSpec{
+			{Module: "claude", Options: map[string]any{"dir": "/home/k20/DEV"}},
+			{Module: "hologram"},
+		},
+	})
+	got, why := chooseLayout(snap, "config.yaml", same)
+	if got == nil {
+		t.Errorf("the arrangement was thrown away for an edit that moved no pane: %s", why)
+	}
+
+	// And a pane added to the file does win.
+	changed := config.LayoutFingerprint(&config.NodeSpec{
+		Split:  "horizontal",
+		Ratios: []int{1, 1, 1},
+		Children: []*config.NodeSpec{
+			{Module: "claude", Options: map[string]any{"dir": "/home/k20/DEV"}},
+			{Module: "hologram"},
+			{Module: "stats"},
+		},
+	})
+	if got, why := chooseLayout(snap, "config.yaml", changed); got != nil {
+		t.Errorf("a pane added to the configuration did nothing (%q)", why)
+	} else if why == "" {
+		t.Error("the configuration won without saying why")
+	}
+}
+
+// The same options, read twice, fingerprint the same. A map iterated in
+// whatever order Go felt like would make every start look like an edit.
+func TestTheFingerprintIsStableAcrossReads(t *testing.T) {
+	spec := func() *config.NodeSpec {
+		return &config.NodeSpec{Module: "supervisor", Options: map[string]any{
+			"keep_running": true,
+			"stop_grace":   5,
+			"services": []any{
+				map[string]any{"name": "api", "cmd": []any{"npm", "run", "debug"}},
+				map[string]any{"name": "web", "cmd": []any{"npm", "run", "dev"}},
+			},
+		}}
+	}
+	first := config.LayoutFingerprint(spec())
+	for i := 0; i < 20; i++ {
+		if got := config.LayoutFingerprint(spec()); got != first {
+			t.Fatalf("read %d fingerprinted as %q, want %q", i, got, first)
+		}
+	}
+	if first == "" {
+		t.Fatal("no fingerprint at all")
 	}
 }
