@@ -623,14 +623,30 @@ func (m *Module) RestartPicked() {
 		s       *service
 		sess    *session.Session
 		adopted *procs.Proc
+		// kept is the relay directory of a service that outlives this
+		// application. Its session holds no process — attaching to a log is
+		// all it is — so terminating that session ends nothing, and the
+		// restart used to start a second server beside the first.
+		kept string
 	}
 	going := make([]pair, 0, len(picked))
 	for _, s := range picked {
 		// Before the session is let go: what it printed is the reason this
 		// button was pressed.
 		m.captureLocked(s)
-		going = append(going, pair{s, s.sess, s.adopted})
-		s.sess, s.adopted, s.state = nil, nil, Stopped
+		p := pair{s: s, adopted: s.adopted}
+		if m.keep {
+			p.kept = s.relay
+			if p.kept == "" {
+				p.kept = m.relayDir(s.spec.Name)
+			}
+			m.detachLocked(s)
+		} else {
+			p.sess = s.sess
+			s.sess = nil
+		}
+		going = append(going, p)
+		s.adopted, s.state = nil, Stopped
 	}
 	m.mu.Unlock()
 
@@ -638,6 +654,12 @@ func (m *Module) RestartPicked() {
 		var wg sync.WaitGroup
 		for _, p := range going {
 			switch {
+			case p.kept != "":
+				wg.Add(1)
+				go func(dir string) {
+					defer wg.Done()
+					killKept(dir, grace)
+				}(p.kept)
 			case p.sess != nil:
 				wg.Add(1)
 				go func(sess *session.Session) {

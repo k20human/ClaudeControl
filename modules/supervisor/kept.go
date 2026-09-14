@@ -46,6 +46,13 @@ func (m *Module) relayDir(name string) string {
 // lets them come back on screen.
 func (m *Module) startKeptLocked(s *service) {
 	dir := m.relayDir(s.spec.Name)
+	// A relay may already be serving this directory — one from an earlier run
+	// of this application, or one whose record a later start overwrote. Taking
+	// it over is the whole of what "already running" means here; starting a
+	// second beside it is how two servers came to fight over one port.
+	if m.attachKeptLocked(s) {
+		return
+	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		s.state, s.code, s.since = Exited, -1, time.Now()
 		return
@@ -89,7 +96,23 @@ func (m *Module) attachKeptLocked(s *service) bool {
 	dir := m.relayDir(s.spec.Name)
 	st, ok := relay.ReadState(dir)
 	if !ok || st.Exited || st.Pid <= 0 || !aliveNow(st.Pid) {
-		return false
+		// The file says nothing is running here. It can be wrong in the one
+		// direction that costs: a start overwrites it, so a relay from an
+		// earlier run has no record left. Ask the process table, which no
+		// start can rewrite.
+		found := liveRelays(dir)
+		if len(found) == 0 {
+			return false
+		}
+		st.Relay, st.Exited = found[0].Pid, false
+		if st.Pid <= 0 || !aliveNow(st.Pid) {
+			// Its own process is whatever it still holds. Unknown is fine:
+			// what matters is that this directory is taken.
+			st.Pid = 0
+		}
+		if st.Started == 0 {
+			st.Started = time.Now().Unix()
+		}
 	}
 	w, h := logArea(m.cols, m.rows)
 	if w < 1 || h < 1 {
@@ -169,31 +192,46 @@ func tail(sess *session.Session, path string, stop <-chan struct{}, replay bool)
 // it leads, which would end the service without ever asking it politely.
 func (m *Module) stopKeptLocked(s *service) {
 	dir, grace := s.relay, m.grace
+	if dir == "" {
+		dir = m.relayDir(s.spec.Name)
+	}
 	m.detachLocked(s)
 	s.state, s.since, s.relayPid = Stopped, time.Now(), 0
+	go func() {
+		killKept(dir, grace)
+		if m.ctx.Wake != nil {
+			m.ctx.Wake()
+		}
+	}()
+}
+
+// killKept ends a kept service: the process the relay is holding, and the
+// relay itself.
+//
+// Both, by two routes, because either record can be wrong. The file names the
+// process to signal, which stops the service the way it expects to be stopped
+// — a whole process group, so `npm run dev` takes the server it launched with
+// it. The process table names every relay serving this directory, which is the
+// only way to reach one whose record was overwritten, and a relay left behind
+// still owns the port.
+//
+// It is what the stop button does and what a restart waits for, because they
+// are the same act.
+func killKept(dir string, grace time.Duration) {
 	if dir == "" {
 		return
 	}
-	go func() {
-		st, ok := relay.ReadState(dir)
-		if !ok || st.Pid <= 0 {
-			return
-		}
+	if st, ok := relay.ReadState(dir); ok && st.Pid > 0 && aliveNow(st.Pid) {
 		_ = syscall.Kill(-st.Pid, syscall.SIGTERM)
 		deadline := time.Now().Add(grace)
-		for time.Now().Before(deadline) {
-			if !aliveNow(st.Pid) {
-				break
-			}
+		for time.Now().Before(deadline) && aliveNow(st.Pid) {
 			time.Sleep(25 * time.Millisecond)
 		}
 		if aliveNow(st.Pid) {
 			_ = syscall.Kill(-st.Pid, syscall.SIGKILL)
 		}
-		if m.ctx.Wake != nil {
-			m.ctx.Wake()
-		}
-	}()
+	}
+	stopRelays(dir, grace)
 }
 
 // detachLocked lets go of a relay's output without touching the service.
