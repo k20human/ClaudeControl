@@ -28,6 +28,20 @@ Go 1.26 or later, and Linux. The service supervisor reads `/proc`, so that part
 is Linux-only by construction; the rest would probably port, but has not been
 tried elsewhere.
 
+And a terminal that reports the mouse. This asks for DEC mode 1003 with SGR
+encoding — every press, release, wheel turn and movement, handed to the
+application as text rather than acted on by the terminal — which every current
+terminal does: VTE and everything built on it, kitty, Alacritty, foot, Konsole,
+WezTerm, xterm. Over SSH it changes nothing, being only bytes. Where it is
+missing — a Linux virtual console without `gpm`, or a multiplexer in between
+deciding the mouse's fate for itself — the keyboard still reaches everything
+except the gestures that are gestures: selecting text, dragging a divider,
+moving a tab.
+
+Taking the mouse takes it from the terminal, so the terminal's own selection
+wants **shift** held down. That is the usual convention, and VTE, kitty and
+Alacritty all follow it.
+
 ## Build and run
 
 ```sh
