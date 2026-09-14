@@ -21,6 +21,7 @@ import (
 	"claudecontrol/internal/session"
 	"claudecontrol/internal/transcript"
 
+	"claudecontrol/modules/claude"
 	panel "claudecontrol/modules/settings"
 )
 
@@ -221,6 +222,7 @@ func New(cfgPath string) (*App, error) {
 	// Settled before any session exists, because a session takes it when it
 	// starts and never asks again.
 	session.SetDefaultScrollback(cfg.ScrollbackOrDefault())
+	claude.SetDefaults(cfg.ClaudeDefaults())
 
 	b := bus.New()
 	a := &App{

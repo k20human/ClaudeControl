@@ -445,6 +445,27 @@ why the returns stop below twenty: what is left is the cost of drawing at all.
 Asking on every frame drawn, as this used to, cost 15.8% for the same pane and
 27.8% at 200 by 50 — a core-third spent on frames nobody can follow.
 
+### What every session is started with
+
+A shell alias cannot reach here. Adding a flag to every `claude` is usually
+done with one — `alias claude='claude --effort max'` — and an alias is expanded
+by an interactive shell reading a command line. This application executes the
+program instead, so the alias never applied and the same command ran at two
+different efforts depending on where it was typed.
+
+Say it here instead, once:
+
+```yaml
+claude:
+  bin: claude                  # optional, for a claude that is not on the path
+  args: ["--effort", "max"]    # what every session is started with
+```
+
+It reaches every session: those declared in this file, those `alt+a` opens,
+those the `+` opens, and those the sessions panel brings back. A pane that
+gives `args` of its own has them appended **after** these, so a flag it repeats
+is the one that counts — which is how a flag given twice is read.
+
 ### Opening one somewhere else
 
 **Right-click → open in…** chooses where the next session starts.

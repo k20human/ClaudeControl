@@ -30,6 +30,9 @@ type Config struct {
 	Layout *NodeSpec  `yaml:"layout"`
 	Alerts *AlertSpec `yaml:"alerts,omitempty"`
 
+	// Claude is what every session this application opens is started with.
+	Claude *ClaudeSpec `yaml:"claude,omitempty"`
+
 	// Scrollback is how many lines each pane keeps once they have scrolled
 	// off the top. A pointer for the same reason the alerts are: not written
 	// and written zero are different answers, and zero — keep next to
@@ -50,6 +53,32 @@ func (c *Config) ScrollbackOrDefault() int {
 		return session.DefaultScrollback
 	}
 	return *c.Scrollback
+}
+
+// ClaudeSpec is the program a session runs and the arguments it runs with.
+//
+// It exists because a shell alias cannot reach here. Adding a flag to every
+// `claude` is usually done with one — `alias claude='claude --effort max'` —
+// and an alias is expanded by an interactive shell reading a command line.
+// This application executes the program instead, so the alias never applied
+// and the same command ran at two different efforts depending on where it was
+// typed.
+//
+// What is written here reaches every session: those in this file, those alt+a
+// opens, and those brought back from the sessions panel. A pane that gives
+// arguments of its own has them appended after these, so a flag it repeats is
+// the one that counts.
+type ClaudeSpec struct {
+	Bin  string   `yaml:"bin,omitempty"`
+	Args []string `yaml:"args,omitempty"`
+}
+
+// ClaudeDefaults are that program and those arguments, or nothing at all.
+func (c *Config) ClaudeDefaults() (bin string, args []string) {
+	if c == nil || c.Claude == nil {
+		return "", nil
+	}
+	return c.Claude.Bin, c.Claude.Args
 }
 
 // AlertSpec says how you are told that a conversation is waiting on you when

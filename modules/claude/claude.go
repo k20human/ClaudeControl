@@ -42,7 +42,11 @@ type Module struct {
 // New builds a claude module. Recognised keys: "bin" (defaults to "claude"),
 // "dir", "args" (a list of extra arguments) and "resume" (a session id).
 func New(cfg map[string]any) (module.Module, error) {
-	m := &Module{binary: "claude"}
+	base, args := defaults()
+	if base == "" {
+		base = "claude"
+	}
+	m := &Module{binary: base, extra: args}
 	if v, ok := cfg["bin"].(string); ok && v != "" {
 		m.binary = v
 	}
@@ -52,6 +56,9 @@ func New(cfg map[string]any) (module.Module, error) {
 	if v, ok := cfg["resume"].(string); ok {
 		m.resume = v
 	}
+	// A pane's own arguments are appended to the shared ones rather than
+	// replacing them: a flag given twice is settled by the last one, so what
+	// this pane says wins over what every pane was given.
 	switch v := cfg["args"].(type) {
 	case []any:
 		for _, item := range v {
