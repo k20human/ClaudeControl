@@ -42,6 +42,7 @@ type tabDragState struct {
 // tabber is a pane that can give a tab up and take one in.
 type tabber interface {
 	TabAt(x, y int) (int, bool)
+	CloseAt(x, y int) (int, bool)
 	Detach(int) (module.Module, module.Held, bool)
 	Adopt(module.Module, module.Held) error
 	Reorder(int, int)

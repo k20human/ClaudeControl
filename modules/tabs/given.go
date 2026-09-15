@@ -1,6 +1,10 @@
 package tabs
 
-import "strings"
+import (
+	"strings"
+
+	"claudecontrol/internal/module"
+)
 
 // Naming a tab by hand.
 //
@@ -116,4 +120,40 @@ func (m *Module) NameSession(id, title string) bool {
 		return false
 	}
 	return m.Rename(at, title)
+}
+
+// SessionsAt are the conversations one tab holds, and nothing for a tab
+// holding something else.
+//
+// Conversations rather than sessions: a shell has a process and an identity
+// too, and neither is something you would think twice about closing. What a
+// module reports here is what it would want back tomorrow.
+func (m *Module) SessionsAt(i int) []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if i < 0 || i >= len(m.tabs) {
+		return nil
+	}
+	lister, ok := m.tabs[i].mod.(module.Sessioner)
+	if !ok {
+		return nil
+	}
+	return lister.Sessions()
+}
+
+// CloseAt is the tab whose cross is under a pane-local point, and whether
+// there is one.
+//
+// The application asks before this module acts on it: closing a tab that holds
+// a conversation is a question, and the answer belongs to whoever can put it
+// on screen.
+func (m *Module) CloseAt(x, y int) (int, bool) {
+	if y < 0 || y >= stripRows {
+		return 0, false
+	}
+	kind, i := m.stripAt(x)
+	if kind != hitClose {
+		return 0, false
+	}
+	return i, true
 }

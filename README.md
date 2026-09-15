@@ -583,9 +583,17 @@ out so a full strip still lets you open a tab, and a `×` on the tab you are
 looking at and no other: it saves the width of one on every tab, and a stray
 click cannot close something you were not reading.
 
-What closing does to whatever the tab held is the module's own business, and
-the same distinction closing a pane makes: a Claude session **detaches and
-keeps running**, reachable from `alt+space`, while a shell ends.
+What closing does to whatever the tab held is **asked**, when there is
+something to lose sight of. A Claude session can detach and keep running,
+reachable from `alt+space`, or end with the tab; `enter` is the first, `x` the
+second, and any other key leaves the tab where it is. The question is the same
+whether you press `alt+x` or click the cross.
+
+A shell is closed without a word, and so is a conversation that has already
+ended: there is nothing there to keep. Detaching silently was right when you
+meant to make room and wrong when you meant to be done — and three
+conversations left running in one afternoon showed the gesture cannot say
+which.
 
 `alt+;` and `alt+'` move between tabs, and clicking a label picks one directly
 — though a click on an unfocused pane takes the focus and goes no further, so

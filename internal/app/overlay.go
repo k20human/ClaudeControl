@@ -18,6 +18,9 @@ const (
 	overlayNone overlayKind = iota
 	overlayHelp
 	overlayQuit
+	// overlayClosing asks what to do with the conversation a tab or pane
+	// holds, before closing it.
+	overlayClosing
 )
 
 var (
@@ -57,6 +60,14 @@ func (a *App) drawOverlay(scr uv.Screen) {
 		a.drawPanel(scr, "SHORTCUTS", helpLines(), "or press any key", panelFg, []panelAction{
 			{"[ close ]", false, func(a *App) { a.dismissOverlay(false) }},
 		})
+	case overlayClosing:
+		a.drawPanel(scr, "CLOSE", a.closingLines(),
+			"enter closes it — x closes and ends it — any other key stays",
+			panelFg, []panelAction{
+				{"[ close ]", false, func(a *App) { a.finishClose(false) }},
+				{"[ end it ]", true, func(a *App) { a.finishClose(true) }},
+				{"[ cancel ]", false, func(a *App) { a.cancelClose() }},
+			})
 	case overlayQuit:
 		n := len(a.pool.All())
 		what := fmt.Sprintf("Quit and end %d sessions?", n)

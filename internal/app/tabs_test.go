@@ -310,6 +310,11 @@ func TestTheStripOpensAndClosesTabs(t *testing.T) {
 	}
 	click(t, s, cross, 0)
 
+	// The tab holds a conversation, so the cross asks what to do with it.
+	// Enter is "close the tab and leave it running".
+	waitForAnywhere(t, snap, "CLOSE")
+	s.SendText("\r")
+
 	deadline = time.Now().Add(4 * time.Second)
 	for time.Now().Before(deadline) {
 		if row := snap().row(0); tabCount(row) == tabCount(before) {

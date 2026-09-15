@@ -137,6 +137,10 @@ type App struct {
 	// rename is the open prompt naming a tab.
 	rename *renameState
 
+	// closing is the tab or pane waiting to be told what to do with the
+	// conversation it holds.
+	closing *closing
+
 	// lastTabPress is the press a second one is compared against, to make a
 	// double-click out of two clicks.
 	lastTabPress tabPress

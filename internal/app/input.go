@@ -93,13 +93,11 @@ func (a *App) closeFocused() {
 		ActiveIndex() int
 		Count() int
 	})
-	if !ok || t.Count() <= 1 {
-		_ = a.closePane(a.focus)
+	if !ok {
+		a.askClosePane(a.focus)
 		return
 	}
-	if err := t.CloseTab(t.ActiveIndex()); err != nil {
-		a.setStatus("%s", err)
-	}
+	a.askCloseTab(a.focus, t.ActiveIndex())
 }
 
 // addTab opens one in the focused pane, if that pane is a pane of tabs.
@@ -233,6 +231,20 @@ func (a *App) handleKey(e uv.KeyPressEvent) {
 	// A panel swallows the keystroke that closes it, so dismissing help can
 	// never drop a stray character into the session underneath.
 	if a.overlay != overlayNone {
+		// Three answers rather than two, so this one reads its own keys: the
+		// difference between letting a conversation run and ending it is not
+		// something to settle with "any other key".
+		if a.overlay == overlayClosing {
+			switch {
+			case e.MatchString("enter"):
+				a.finishClose(false)
+			case e.MatchString("x"):
+				a.finishClose(true)
+			default:
+				a.cancelClose()
+			}
+			return
+		}
 		// Space is the box, not an answer: a panel offering a choice has to
 		// let you change it without leaving.
 		if a.overlay == overlayQuit && e.MatchString("space") {

@@ -301,6 +301,18 @@ func (a *App) handleMouse(ev uv.MouseEvent, m uv.Mouse) {
 	if m.Y < r.Y {
 		return
 	}
+	// The cross is the application's business, not the pane's: closing a tab
+	// that holds a conversation is a question, and the answer has to be put
+	// somewhere the pane cannot put it. The click stops here.
+	if click, isClick := ev.(uv.MouseClickEvent); isClick && uv.Mouse(click).Button == uv.MouseLeft {
+		if t, ok := a.paneTabs(id); ok {
+			if i, hit := t.CloseAt(m.X-r.X, m.Y-r.Y); hit {
+				a.askCloseTab(id, i)
+				return
+			}
+		}
+	}
+
 	// A press on a tab's label arms a move. The press is forwarded all the
 	// same, so the tab you are dragging is the one you are looking at; if the
 	// pointer never leaves the label, that is all it was.
