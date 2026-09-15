@@ -44,7 +44,11 @@ func (p *Pool) Add(s *session.Session, title, dir string) {
 	if _, exists := p.items[s.ID]; !exists {
 		p.order = append(p.order, s.ID)
 	}
-	p.items[s.ID] = &Entry{Session: s, Title: title, Dir: dir}
+	// Attached from the start: a session is added by the pane that opened it,
+	// and it is the pane that later says it has let go. Left false until the
+	// caller said otherwise, an entry counted as detached for as long as that
+	// took — and what is counted is what the window reports about itself.
+	p.items[s.ID] = &Entry{Session: s, Title: title, Dir: dir, Attached: true}
 	p.mu.Unlock()
 	p.announce()
 }
@@ -131,13 +135,21 @@ func (p *Pool) SetAttached(id session.ID, attached bool) {
 	}
 }
 
-// Waiting counts the sessions that need an answer from the user.
+// Waiting counts the sessions on screen that need an answer from the user.
+//
+// On screen: a conversation whose pane was closed keeps running — that is what
+// closing a tab does to a Claude session — and it is still listed, marked
+// detached, where the sessions are listed. It is not what this window is
+// waiting on, and counting it said "5 waiting" to somebody looking at two.
+//
+// It is also what the count is for. The number is a button that goes to what
+// is waiting, and nothing can go to a conversation no pane is showing.
 func (p *Pool) Waiting() int {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	n := 0
 	for _, e := range p.items {
-		if stateOf(e) == StateWaiting {
+		if e.Attached && stateOf(e) == StateWaiting {
 			n++
 		}
 	}

@@ -681,6 +681,12 @@ Both default to on. If nothing on the machine can post a notification the bar
 says so at startup, rather than at the moment one is missed — on Debian and
 Ubuntu the program is in `libnotify-bin`.
 
+Both counts are about **this window**: a conversation whose pane you closed
+keeps running, and is listed in `alt+space` marked `detached`, but it is not
+what the window is waiting on. Counting those said `5 waiting` to somebody
+looking at two — and the number is a button that goes to what is waiting, which
+can go nowhere for a conversation no pane is showing.
+
 **`alt+i` goes to whatever is waiting**, and so does clicking the `N waiting`
 count in the bar. The count already said that something needs you; the only
 question it left was where. The pane is focused and, if it is a pane of tabs,

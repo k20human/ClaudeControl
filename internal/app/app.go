@@ -782,6 +782,14 @@ func (a *App) windowTitle() string {
 		if e.State == pool.StateExited {
 			continue
 		}
+		// And a conversation no pane is showing is not what this window has
+		// to say about itself. Closing a tab leaves the session running on
+		// purpose; three left that way turned "2 waiting" into "5 waiting"
+		// for somebody looking at two. They are in alt+space, marked
+		// detached, which is where you go looking for them.
+		if !e.Attached {
+			continue
+		}
 		states = append(states, e.State)
 		counts[e.State]++
 	}

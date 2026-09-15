@@ -172,3 +172,21 @@ func TestASessionWhoseProcessIsGoneIsNotWaiting(t *testing.T) {
 		t.Errorf("state = %v, want exited", all[0].State)
 	}
 }
+
+// A conversation whose pane was closed keeps running — that is what closing a
+// tab does to a Claude session — and it is not what the window is waiting on.
+// Counted, it said "5 waiting" to somebody looking at two.
+func TestWaitingIgnoresAConversationNoPaneIsShowing(t *testing.T) {
+	p := pool.New(bus.New())
+	defer p.CloseAll()
+
+	p.Add(start(t, "shown"), "shown", "/tmp")
+	p.Add(start(t, "detached"), "detached", "/tmp")
+	p.SetState("shown", pool.StateWaiting)
+	p.SetState("detached", pool.StateWaiting)
+	p.SetAttached("detached", false)
+
+	if got := p.Waiting(); got != 1 {
+		t.Errorf("Waiting() = %d, want 1 — the one a pane is showing", got)
+	}
+}

@@ -69,3 +69,20 @@ func TestTheTitleIsTheNameWhenNothingWantsYou(t *testing.T) {
 		t.Errorf("title = %q, want just the name", got)
 	}
 }
+
+// The title is about this window. A conversation whose pane was closed keeps
+// running on purpose, and is listed in alt+space marked detached — but it is
+// not something the window has to report, and counting three of them turned
+// "2 waiting" into "5 waiting" for somebody looking at two.
+func TestTheTitleIgnoresAConversationNoPaneIsShowing(t *testing.T) {
+	a := newTestApp(t)
+	a.pool = titlePool(t, pool.StateWaiting, pool.StateWaiting, pool.StateWaiting)
+
+	// The third was let go of, the way closing a tab lets go.
+	a.pool.SetAttached(session.ID("c"), false)
+
+	got := a.windowTitle()
+	if !strings.Contains(got, "2 waiting") {
+		t.Errorf("title = %q, want the two a pane is showing", got)
+	}
+}
